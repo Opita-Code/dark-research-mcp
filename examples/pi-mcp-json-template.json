@@ -1,0 +1,20 @@
+{
+  "_comment": "Pi MCP adapter config example. Place at .mcp.json in your project root. See docs/security/threat-model.md before using.",
+  "mcpServers": {
+    "dark-research": {
+      "_comment": "Path to the dark-research-mcp binary. Must be built with -tags allow_builtin_dark to load the dark constitution. See cmd/dark-research-mcp/ for the build flags.",
+      "command": "C:/path/to/dark-research-mcp-windows-amd64.exe",
+      "_comment_args": "Pass --constitution dark to activate the dark constitution. The light constitution is the default and is the right choice for non-research use.",
+      "args": ["--constitution", "dark"],
+      "_comment_lifecycle": "lazy = connect on first tool call (recommended for performance). eager = connect at startup. keep-alive = persistent with health checks.",
+      "lifecycle": "lazy",
+      "_comment_idleTimeout": "Minutes before idle disconnect. The defense layer rate limit is in addition to this.",
+      "idleTimeout": 30,
+      "_comment_env": "The binary reads SDD_LLM_API_KEY (or MINIMAX_API_KEY) and SDD_LLM_BASE_URL from env. Do NOT hardcode keys in .mcp.json.",
+      "env": {
+        "SDD_LLM_BASE_URL": "https://api.minimax.io/anthropic",
+        "SDD_LLM_MODEL": "MiniMax-M3"
+      }
+    }
+  }
+}

@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/dark-agents/research-mcp/internal/mem"
 	"github.com/dark-agents/research-mcp/internal/mods"
 	"github.com/dark-agents/research-mcp/internal/research"
+	"github.com/dark-agents/research-mcp/internal/safety"
 	darkserver "github.com/dark-agents/research-mcp/internal/server"
 	"github.com/dark-agents/research-mcp/internal/tools"
 )
@@ -125,6 +127,19 @@ func main() {
 		log.Printf("dark-research-mcp: llm_cache=%s ttl=%s", cache.Stats().Path, *cacheTTL)
 	}
 	tools.AttachLLMCache(cache)
+
+	// Initialize the defense layer (v0.4.1+). L1/L2/L7/L8/L9
+	// are wired through the safety package and applied to
+	// every tool via tools.defenseWrap. The cap is
+	// conservative; advanced users raise it via flag.
+	maxCalls := 1000
+	if v := os.Getenv("DARK_MAX_CALLS_PER_SESSION"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			maxCalls = n
+		}
+	}
+	safety.InitDefault(maxCalls)
+	log.Printf("dark-research-mcp: defense_layer=on max_calls=%d", maxCalls)
 
 	srv, err := darkserver.New(cfg, store, filepath.Base(db), modsRegistry)
 	if err != nil {

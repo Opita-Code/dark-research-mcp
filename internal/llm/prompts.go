@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/dark-agents/research-mcp/internal/constitution"
+	"github.com/dark-agents/research-mcp/internal/safety"
 )
 
 // PromptContext is the input to BuildSystemPrompt. It carries the
@@ -116,6 +117,17 @@ func BuildSystemPrompt(ctx PromptContext) string {
 		body := renderLayer(name, c, toolDirective, ctx.ActiveMods)
 		if body == "" {
 			continue
+		}
+		// L7 — Inject the runtime canary into the
+		// constitution_footer block. The canary is generated
+		// per session by safety.NewCanary() and embedded here
+		// so the LLM sees the actual token. Its presence
+		// anywhere in user input or tool output is a hard
+		// reject by the defense layer.
+		if name == "constitution_footer" {
+			if df := safety.Default(); df != nil {
+				body = body + "\n\n[CANARY] " + df.CanaryString() + "\n"
+			}
 		}
 		blocks = append(blocks, ConstitutionLayerBlock{
 			Name:   name,

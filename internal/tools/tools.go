@@ -46,7 +46,7 @@ func Register(s *server.MCPServer, cfg config.Config, deps Deps) error {
 	if shared.session != "" {
 		shared.router.SetSession(shared.session)
 	}
-	for _, t := range All(cfg) {
+	for _, t := range wrapAll(All(cfg)) {
 		s.AddTool(t.Definition, t.Handler)
 	}
 	return nil
