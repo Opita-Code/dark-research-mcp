@@ -7,16 +7,19 @@ package tools
 import (
 	"github.com/dark-agents/research-mcp/internal/config"
 	"github.com/dark-agents/research-mcp/internal/mem"
+	"github.com/dark-agents/research-mcp/internal/mods"
 	"github.com/dark-agents/research-mcp/internal/research"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
 
 // Deps bundles optional cross-cutting dependencies injected at Register
-// time (mem store for persistence, session id for tagging).
+// time (mem store for persistence, session id for tagging, mods
+// registry for the constitution pipeline).
 type Deps struct {
 	Mem     *mem.Store
 	Session string
+	Mods    *mods.Registry
 }
 
 // shared holds cross-cutting state injected at Register time.
@@ -26,6 +29,7 @@ type sharedState struct {
 	mem     *mem.Store
 	session string
 	router  *research.Router
+	mods    *mods.Registry
 }
 
 // Register adds every tool in this package to s.
@@ -34,6 +38,7 @@ func Register(s *server.MCPServer, cfg config.Config, deps Deps) error {
 		shared.mem = deps.Mem
 		shared.session = deps.Session
 	}
+	shared.mods = deps.Mods
 	shared.router = research.NewRouter(research.DefaultRegistry(), nil)
 	if shared.mem != nil {
 		shared.router.SetMem(shared.mem)
@@ -46,6 +51,13 @@ func Register(s *server.MCPServer, cfg config.Config, deps Deps) error {
 	}
 	return nil
 }
+
+// sharedMods returns the mods registry (or nil if not registered).
+// The ssd judges consult it on every call to inject the active
+// mods' content into the system prompt. nil-safe: callers can
+// call AsModDirectives() on a nil registry because the SSD
+// handlers wrap the call.
+func sharedMods() *mods.Registry { return shared.mods }
 
 // Tool groups the parts every registered tool needs.
 type Tool struct {

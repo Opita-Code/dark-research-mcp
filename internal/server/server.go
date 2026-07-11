@@ -10,19 +10,22 @@ import (
 
 	"github.com/dark-agents/research-mcp/internal/config"
 	"github.com/dark-agents/research-mcp/internal/mem"
+	"github.com/dark-agents/research-mcp/internal/mods"
 	"github.com/dark-agents/research-mcp/internal/tools"
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// New constructs the MCP server with all registered tools.
-func New(cfg config.Config, store *mem.Store, session string) (*server.MCPServer, error) {
+// New constructs the MCP server with all registered tools. The
+// mods registry is optional (nil = no mods; the dark_ssd_*
+// judges receive an empty ActiveMods list).
+func New(cfg config.Config, store *mem.Store, session string, modsReg *mods.Registry) (*server.MCPServer, error) {
 	s := server.NewMCPServer(
 		"dark-research-mcp",
 		"0.1.0",
 		server.WithToolCapabilities(true),
 	)
 
-	if err := tools.Register(s, cfg, tools.Deps{Mem: store, Session: session}); err != nil {
+	if err := tools.Register(s, cfg, tools.Deps{Mem: store, Session: session, Mods: modsReg}); err != nil {
 		return nil, fmt.Errorf("register tools: %w", err)
 	}
 

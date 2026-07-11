@@ -87,12 +87,41 @@ func requireLLM() (*llm.Client, error) {
 // This is the single hook the rest of ssd.go uses — every dark_ssd_*
 // handler calls this exactly once, in the place where the original
 // code had a `system := "..."` literal.
+//
+// The active mod set (if any) is fetched from the mods registry
+// and passed as ActiveMods. Light-mode callers see no change
+// (mods are only rendered in the dark path).
 func judgeSystemPrompt(toolName string) string {
 	c := constitution.Active()
+	mods := activeModDirectives()
 	return llm.BuildSystemPrompt(llm.PromptContext{
 		Constitution: c,
 		ToolName:     toolName,
+		ActiveMods:   mods,
 	})
+}
+
+// activeModDirectives returns the current active mods as
+// []llm.ModDirective. The bridge from internal/mods to internal/llm
+// lives here so neither package imports the other.
+func activeModDirectives() []llm.ModDirective {
+	regs := sharedMods()
+	if regs == nil {
+		return nil
+	}
+	raw := regs.AsModDirectives()
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make([]llm.ModDirective, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, llm.ModDirective{
+			ModID:  r.ModID,
+			Source: r.Source,
+			Body:   r.Body,
+		})
+	}
+	return out
 }
 
 // judgeConstitutionRef returns the "id@version" handle of the

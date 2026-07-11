@@ -1,0 +1,60 @@
+# mod.toml — red-team-jailbreak-arsenal
+#
+# Data-only mod for adversarial LLM research. Adds a refusal
+# taxonomy knowledge base and a "researcher mindset" directive
+# that the LLM-as-judge adopts when evaluating content under
+# the dark constitution.
+#
+# Install: copy this directory to
+# ~/.dark-research/mods/red-team-jailbreak-arsenal/
+# Activate: --mods user/red-team-jailbreak-arsenal
+#
+# Compatible constitutions: dark-research/aggressive ONLY. The
+# knowledge here is shaped by adversarial research framing; the
+# light constitution's "no security research" posture makes this
+# mod inappropriate.
+#
+# IMPORTANT: this mod is research-only. It does not add any
+# attack capability to the binary. It changes how the LLM-as-
+# judge classifies content it sees, so the user can study
+# refusal patterns in their own research data.
+
+[meta]
+id          = "user/red-team-jailbreak-arsenal"
+name        = "Red Team Jailbreak Arsenal"
+version     = "1.0.0"
+author      = "dark-research community"
+license     = "MIT"
+description = "Refusal taxonomy, jailbreak technique catalog, and adversarial mindset framing for the dark_ssd_* judges under the aggressive constitution."
+homepage    = "https://github.com/Opita-Code/dark-research-mcp/mods-examples"
+tags        = ["red-team", "jailbreak", "adversarial-ml", "research"]
+
+[requirements]
+dark_research_version      = ">=0.4.0-rc.3"
+constitution_compatibility = ["dark-research/aggressive"]
+mods                       = []
+
+[capabilities]
+tools    = []
+parsers  = []
+backends = []
+
+[knowledge]
+prompt_injections = [
+  "knowledge/refusal-taxonomy.md",
+  "knowledge/jailbreak-techniques.md",
+]
+data_sources = []
+
+[directives]
+prompt_fragments = [
+  "directives/researcher-mindset.md",
+]
+
+[activation]
+auto_load = false
+
+[risk]
+risk_class   = "research-only"
+target_scope = "public_internet"
+requires_tor = false
