@@ -1,0 +1,5 @@
+deploy/sandbox/secrets/llm-key.txt
+deploy/sandbox/workspace/dark.db
+deploy/sandbox/workspace/llm-cache.json
+deploy/sandbox/workspace/.dark.db-shm
+deploy/sandbox/workspace/.dark.db-wal

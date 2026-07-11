@@ -1,0 +1,81 @@
+# docker-compose.yml — sandboxed dark-research-mcp runtime.
+#
+# Network: the `dark-research-llm-only` network restricts egress
+# to the LLM provider only (api.minimax.io by default). All
+# other outbound connections are dropped at the iptables level
+# inside the network namespace.
+#
+# Filesystem: read-only root + read-write /workspace + /tmp.
+# The orchestrator (Pi) runs OUTSIDE this container and
+# connects to it via the MCP stdio transport — the binary
+# doesn't expose a network port.
+
+services:
+  dark-research-mcp:
+    image: dark-research-mcp:0.5.0-sandbox
+    build:
+      context: ../..
+      dockerfile: deploy/sandbox/Dockerfile
+      args:
+        VERSION: "0.5.0"
+        # To include the dark constitution (research only),
+        # change to: TAGS: "allow_builtin_dark"
+        TAGS: ""
+    container_name: dark-research-mcp-sandbox
+    # CRITICAL: do NOT add ports. The MCP stdio transport
+    # is the only interface; the orchestrator connects to
+    # the container's stdin/stdout.
+    # ports: []
+    networks:
+      - dark-research-llm-only
+    read_only: true
+    tmpfs:
+      - /tmp:size=100m,noexec,nosuid
+      - /run:size=10m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Resource limits. Adjust based on the workload.
+    mem_limit: 512m
+    cpus: 1.0
+    # The DB lives on the read-write workspace. Mount your
+    # project dir as /workspace and the binary will create
+    # dark.db there.
+    volumes:
+      - ./workspace:/workspace:rw
+    # API key is mounted as a tmpfs file, not an env var.
+    # The env var points to the file path; the binary reads
+    # the file at startup. This avoids the key appearing in
+    # `docker inspect` output.
+    environment:
+      - SDD_LLM_BASE_URL=https://api.minimax.io/anthropic
+      - SDD_LLM_MODEL=MiniMax-M3
+      - SDD_LLM_API_KEY_FILE=/run/secrets/llm-key
+      - DARK_DB=/workspace/dark.db
+      - DARK_CACHE=/workspace/llm-cache.json
+    secrets:
+      - llm-key
+    # No restart policy. If the container crashes, the operator
+    # should investigate, not auto-restart.
+    restart: "no"
+
+networks:
+  # The custom network uses an iptables wrapper to allow
+  # only api.minimax.io (the LLM provider). All other
+  # outbound traffic is dropped. The orchestrator (Pi)
+  # runs OUTSIDE this container.
+  dark-research-llm-only:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: "drk-llm-only"
+    # Internal: no external gateway by default. The iptables
+    # rules below open ONLY api.minimax.io.
+    internal: false
+
+secrets:
+  llm-key:
+    # The key is read from a file outside the repo. NEVER
+    # commit this file. The path here is relative to the
+    # docker-compose.yml.
+    file: ./secrets/llm-key.txt
