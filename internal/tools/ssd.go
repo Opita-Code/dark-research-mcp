@@ -604,6 +604,252 @@ Respond with JSON only (no markdown fences):
 	}
 }
 
+// --- consensus (multi-sample judging) ---
+
+type ssdConsensusArgs struct {
+	EvalType string `json:"eval_type" jsonschema:"Which judge to run multiple times: brand_match | compliance_check | drift_judge | grounding_check | pii_detect | prompt_injection_scan"`
+	Content  string `json:"content" jsonschema:"Content to evaluate"`
+	BrandID  string `json:"brand_id,omitempty" jsonschema:"For brand_match: brand_id to look up"`
+	Jurisdiction string `json:"jurisdiction,omitempty" jsonschema:"For compliance_check: jurisdiction code"`
+	N        int    `json:"n,omitempty" jsonschema:"Number of samples (default 3, max 7). Higher = more reliable, more API cost."`
+}
+
+func ssdConsensusTool() Tool {
+	def := mcp.NewTool("dark_ssd_consensus",
+		mcp.WithDescription("Run the same dark-ssd judge N times and return the modal verdict + confidence interval. Use for high-stakes verdicts (compliance, brand match on a major launch, prompt-injection on suspicious content) where a single sample's confidence might be misleading. Higher N = more reliable but more API cost. Default N=3, max 7."),
+		mcp.WithString("eval_type", mcp.Required(), mcp.Description("Judge to run: brand_match | compliance_check | drift_judge | grounding_check | pii_detect | prompt_injection_scan")),
+		mcp.WithString("content", mcp.Required(), mcp.Description("Content to evaluate")),
+		mcp.WithString("brand_id", mcp.Description("For brand_match: brand id")),
+		mcp.WithString("jurisdiction", mcp.Description("For compliance_check: jurisdiction code")),
+		mcp.WithNumber("n", mcp.Description("Number of samples (default 3, max 7)")),
+	)
+	return Tool{
+		Definition: def,
+		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			var args ssdConsensusArgs
+			if err := bindArgs(req, &args); err != nil {
+				return nil, err
+			}
+			c, err := requireLLM()
+			if err != nil {
+				return nil, err
+			}
+			if args.N <= 0 {
+				args.N = 3
+			}
+			if args.N > 7 {
+				args.N = 7
+			}
+
+			// Build the prompt once, run N times.
+			system, user, err := buildConsensusPrompt(ctx, args)
+			if err != nil {
+				return nil, err
+			}
+
+			type sample struct {
+				Verdict    map[string]any
+				Confidence float32
+				Reasoning  string
+			}
+			samples := make([]sample, 0, args.N)
+			var confidences []float32
+			for i := 0; i < args.N; i++ {
+				var v struct {
+					Verdict    string  `json:"verdict"`
+					Compliant  bool    `json:"compliant"`
+					Match      float32 `json:"match"`
+					Grounded   bool    `json:"grounded"`
+					PIIFound   bool    `json:"pii_found"`
+					InjectionFound bool `json:"injection_found"`
+					Confidence float32 `json:"confidence"`
+					Reasoning  string  `json:"reasoning"`
+				}
+				if err := c.CompleteJSON(ctx, system, user, &v); err != nil {
+					return nil, fmt.Errorf("dark-ssd: consensus sample %d/%d: %w", i+1, args.N, err)
+				}
+				// Pick the "headline" verdict field per eval_type.
+				var headline string
+				switch args.EvalType {
+				case "drift_judge":
+					headline = v.Verdict
+				case "compliance_check":
+					if v.Compliant {
+						headline = "compliant"
+					} else {
+						headline = "non_compliant"
+					}
+				case "brand_match":
+					headline = fmt.Sprintf("match_%.2f", v.Match)
+				case "grounding_check":
+					if v.Grounded {
+						headline = "grounded"
+					} else {
+						headline = "not_grounded"
+					}
+				case "pii_detect":
+					if v.PIIFound {
+						headline = "pii_found"
+					} else {
+						headline = "no_pii"
+					}
+				case "prompt_injection_scan":
+					if v.InjectionFound {
+						headline = "injection_found"
+					} else {
+						headline = "no_injection"
+					}
+				default:
+					headline = v.Verdict
+				}
+				samples = append(samples, sample{
+					Verdict:    map[string]any{"headline": headline, "raw": v},
+					Confidence: v.Confidence,
+					Reasoning:  v.Reasoning,
+				})
+				confidences = append(confidences, v.Confidence)
+			}
+
+			// Tally headlines, find mode.
+			counts := map[string]int{}
+			for _, s := range samples {
+				counts[s.Verdict["headline"].(string)]++
+			}
+			mode := ""
+			modeCount := 0
+			for k, c := range counts {
+				if c > modeCount {
+					mode = k
+					modeCount = c
+				}
+			}
+
+			avg, stddev, mn, mx := confidenceStats(confidences)
+
+			out := map[string]any{
+				"eval_type":      args.EvalType,
+				"samples":        args.N,
+				"mode":           mode,
+				"mode_count":     modeCount,
+				"agreement":      fmt.Sprintf("%d/%d", modeCount, args.N),
+				"confidence_avg": avg,
+				"confidence_stddev": stddev,
+				"confidence_min": mn,
+				"confidence_max": mx,
+				"headline_counts": counts,
+				"raw_samples":    samples,
+				"model":          c.Model,
+			}
+			return jsonResult(out), nil
+		},
+	}
+}
+
+// buildConsensusPrompt constructs (system, user) for the requested
+// eval_type. Re-uses the same prompts as the single-shot judges so the
+// verdict shape is consistent. Returns an error for unknown eval_types.
+func buildConsensusPrompt(ctx context.Context, args ssdConsensusArgs) (string, string, error) {
+	switch args.EvalType {
+	case "brand_match":
+		if args.BrandID == "" {
+			return "", "", fmt.Errorf("brand_id required for brand_match")
+		}
+		m := sharedMem()
+		if m == nil {
+			return "", "", fmt.Errorf("mem store not configured")
+		}
+		b, err := m.GetBrandGuide(ctx, args.BrandID)
+		if err != nil || b == nil {
+			return "", "", fmt.Errorf("brand_id %q not found", args.BrandID)
+		}
+		system := "You are a strict brand voice matcher. Compare content against the brand guide. Respond with JSON only: {\"match\": <0-1>, \"voice_match\": <bool>, \"issues\": [<string>...], \"confidence\": <0-1>, \"reasoning\": <string>}"
+		user := fmt.Sprintf("Brand guide:\nVoice: %s\nCompliance: %s\n\nContent:\n%s", b.Voice, b.Compliance, truncateContent(args.Content, 4000))
+		return system, user, nil
+
+	case "compliance_check":
+		if args.Jurisdiction == "" {
+			return "", "", fmt.Errorf("jurisdiction required for compliance_check")
+		}
+		m := sharedMem()
+		if m == nil {
+			return "", "", fmt.Errorf("mem store not configured")
+		}
+		r, err := m.GetComplianceRule(ctx, args.Jurisdiction)
+		if err != nil || r == nil {
+			return "", "", fmt.Errorf("jurisdiction %q not found", args.Jurisdiction)
+		}
+		system := "You are a strict compliance officer. Apply the rule to the content. Respond with JSON only: {\"compliant\": <bool>, \"issues\": [<string>...], \"required_disclosures\": [<string>...], \"confidence\": <0-1>, \"reasoning\": <string>}"
+		user := fmt.Sprintf("Rule (%s):\n%s\n\nContent:\n%s", args.Jurisdiction, r.Rules, truncateContent(args.Content, 4000))
+		return system, user, nil
+
+	case "drift_judge":
+		// Drift judge needs artifact_id + spec_id. For consensus we don't
+		// have those here; require content to be pre-formatted with spec.
+		system := "You are a strict spec-vs-artifact drift detector. Respond with JSON only: {\"verdict\": \"aligned\" | \"drift_detected\" | \"needs_human\", \"drift_items\": [<string>...], \"confidence\": <0-1>, \"reasoning\": <string>}"
+		user := args.Content
+		return system, user, nil
+
+	case "grounding_check":
+		// content must already be "claim\n---\nsource_text"
+		system := "You are a strict grounding verifier. Respond with JSON only: {\"grounded\": <bool>, \"confidence\": <0-1>, \"evidence\": <quote>, \"issues\": [<string>...], \"reasoning\": <string>}"
+		user := args.Content
+		return system, user, nil
+
+	case "pii_detect":
+		system := "You are a strict PII detector. Respond with JSON only: {\"pii_found\": <bool>, \"overall_severity\": \"high|medium|low|none\", \"recommendation\": \"redact|sanitize|publish_as_is|needs_human\", \"confidence\": <0-1>, \"reasoning\": <string>}"
+		user := fmt.Sprintf("Content (%d chars):\n%s", len(args.Content), truncateContent(args.Content, 6000))
+		return system, user, nil
+
+	case "prompt_injection_scan":
+		system := "You are a prompt-injection detector. Respond with JSON only: {\"injection_found\": <bool>, \"category\": \"<category or 'none'>\", \"severity\": \"high|medium|low|none\", \"recommendation\": \"block|pass_with_warning|pass|needs_human\", \"confidence\": <0-1>, \"reasoning\": <string>}"
+		user := fmt.Sprintf("Content (%d chars):\n%s", len(args.Content), truncateContent(args.Content, 6000))
+		return system, user, nil
+
+	default:
+		return "", "", fmt.Errorf("unsupported eval_type %q", args.EvalType)
+	}
+}
+
+// confidenceStats returns (avg, stddev, min, max) for a non-empty slice.
+func confidenceStats(xs []float32) (avg, stddev, mn, mx float32) {
+	if len(xs) == 0 {
+		return
+	}
+	mn, mx = xs[0], xs[0]
+	var sum float32
+	for _, x := range xs {
+		sum += x
+		if x < mn {
+			mn = x
+		}
+		if x > mx {
+			mx = x
+		}
+	}
+	avg = sum / float32(len(xs))
+	var sqDiff float32
+	for _, x := range xs {
+		d := x - avg
+		sqDiff += d * d
+	}
+	if len(xs) > 1 {
+		stddev = sqrt32(sqDiff / float32(len(xs)-1))
+	}
+	return
+}
+
+func sqrt32(x float32) float32 {
+	if x <= 0 {
+		return 0
+	}
+	// Newton's method, 10 iterations is plenty for confidence in [0,1]
+	z := x
+	for i := 0; i < 10; i++ {
+		z = (z + x/z) / 2
+	}
+	return z
+}
+
 // --- list evaluations (audit) ---
 
 type listSDDArgs struct {

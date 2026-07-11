@@ -5,9 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/dark-agents/research-mcp/internal/mem"
+	"github.com/dark-agents/research-mcp/internal/safety"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -413,6 +417,103 @@ func artifactDeleteTool() Tool {
 				return nil, err
 			}
 			return jsonResult(map[string]any{"artifact_id": args.ArtifactID, "deleted": true}), nil
+		},
+	}
+}
+
+type artifactDownloadArgs struct {
+	ArtifactID int64 `json:"artifact_id" jsonschema:"Artifact id from dark_research_artifact_log"`
+	MaxLength  int   `json:"max_length,omitempty" jsonschema:"Max characters of returned content (default 20000; capped at Safety.MaxOutputChars)"`
+}
+
+func artifactDownloadTool(c *clients) Tool {
+	def := mcp.NewTool("dark_research_artifact_download",
+		mcp.WithDescription("Fetch the content of an artifact's URL for dark_ssd_drift_judge or dark_ssd_grounding_check. Looks up the artifact in dark.db, SSRF-guards the URL (no private IPs unless safety.allow_loopback is true), downloads via the shared clearnet client with a byte cap, and returns the text content. Use BEFORE drift_judge so the judge can compare actual content vs spec without you copy-pasting."),
+		mcp.WithNumber("artifact_id", mcp.Required(), mcp.Description("Artifact id")),
+		mcp.WithNumber("max_length", mcp.Description("Max characters of returned content (default 20000; capped at Safety.MaxOutputChars)")),
+	)
+	return Tool{
+		Definition: def,
+		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			var args artifactDownloadArgs
+			if err := bindArgs(req, &args); err != nil {
+				return nil, err
+			}
+			m := sharedMem()
+			if m == nil {
+				return nil, fmt.Errorf("mem store not configured")
+			}
+			art, err := m.GetArtifact(ctx, args.ArtifactID)
+			if err != nil {
+				return nil, err
+			}
+			if art == nil {
+				return jsonResult(map[string]any{"found": false, "artifact_id": args.ArtifactID}), nil
+			}
+			if art.ArtifactURL == "" {
+				return jsonResult(map[string]any{
+					"artifact_id": args.ArtifactID,
+					"downloaded":  false,
+					"reason":      "artifact has no artifact_url (was logged without a URL)",
+				}), nil
+			}
+			if _, err := safety.ValidateURL(art.ArtifactURL, c.Cfg.Safety.AllowLoopback); err != nil {
+				return jsonResult(map[string]any{
+					"artifact_id": args.ArtifactID,
+					"url":         art.ArtifactURL,
+					"downloaded":  false,
+					"reason":      "ssrf guard rejected URL: " + err.Error(),
+				}), nil
+			}
+			maxLen := args.MaxLength
+			if maxLen <= 0 {
+				maxLen = 20000
+			}
+			if maxLen > c.Cfg.Safety.MaxOutputChars {
+				maxLen = c.Cfg.Safety.MaxOutputChars
+			}
+
+			httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, art.ArtifactURL, nil)
+			if err != nil {
+				return nil, err
+			}
+			httpReq.Header.Set("User-Agent", "dark-research-mcp/0.3 (+https://github.com/dark-agents/research-mcp) artifact-download")
+			httpReq.Header.Set("Accept", "text/plain,text/html,text/markdown,application/json;q=0.5")
+
+			resp, err := c.clearnet.DoContext(ctx, httpReq)
+			if err != nil {
+				return nil, fmt.Errorf("fetch %s: %w", art.ArtifactURL, err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				return nil, fmt.Errorf("fetch %s returned %d", art.ArtifactURL, resp.StatusCode)
+			}
+			body, err := io.ReadAll(io.LimitReader(resp.Body, int64(c.Cfg.Safety.MaxResponseBytes)))
+			if err != nil {
+				return nil, fmt.Errorf("read body: %w", err)
+			}
+			content := string(body)
+			truncated := false
+			if len(content) > maxLen {
+				content = content[:maxLen]
+				truncated = true
+			}
+			out := map[string]any{
+				"artifact_id":   args.ArtifactID,
+				"url":           art.ArtifactURL,
+				"downloaded":    true,
+				"bytes":         len(body),
+				"fetched_at":    time.Now().UTC(),
+				"http_status":   resp.StatusCode,
+				"content":       content,
+				"content_type":  resp.Header.Get("Content-Type"),
+				"truncated":     truncated,
+				"spec_id":       art.SpecID,
+				"vibe_case":     art.VibeCase,
+				"brand_id":      art.BrandID,
+				"jurisdiction":  art.Jurisdiction,
+			}
+			return jsonResult(out), nil
 		},
 	}
 }

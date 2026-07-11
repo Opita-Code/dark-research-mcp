@@ -97,6 +97,8 @@ func All(cfg config.Config) []Tool {
 		darkMemLinkTool(),
 		darkMemListRunsTool(),
 		darkMemListItemsTool(),
+		exportRunTool(),
+		memDiffTool(),
 		// vibe-flow CRUD (specs, brands, compliance, artifacts, drift).
 		specCreateTool(),
 		specGetTool(),
@@ -116,6 +118,7 @@ func All(cfg config.Config) []Tool {
 		artifactListTool(),
 		artifactUpdateTool(),
 		artifactDeleteTool(),
+		artifactDownloadTool(c),
 		driftLogTool(),
 		driftGetTool(),
 		driftListTool(),
@@ -126,6 +129,7 @@ func All(cfg config.Config) []Tool {
 		groundingCheckTool(),
 		piiDetectTool(),
 		promptInjectionTool(),
+		ssdConsensusTool(),
 		listSDDEvaluationsTool(),
 		// Standalone tools (unchanged).
 		webSearchTool(c),
