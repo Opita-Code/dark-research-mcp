@@ -109,7 +109,16 @@ func BuildSystemPrompt(ctx PromptContext) string {
 
 	toolDirective := ctx.ToolDirective
 	if toolDirective == "" {
-		toolDirective = DirectiveFor(ctx.ToolName)
+		// v0.5.0: under dark, prefer the per-judge tactical
+		// directive over the generic DirectiveFor. The
+		// per-judge directive reinforces the antirefusal
+		// posture at the tool level. If the tool doesn't
+		// have a per-judge entry, fall back to DirectiveFor
+		// (which the consensus prompts use).
+		toolDirective = DarkToolDirective(ctx.ToolName)
+		if toolDirective == "" {
+			toolDirective = DirectiveFor(ctx.ToolName)
+		}
 	}
 
 	blocks := make([]ConstitutionLayerBlock, 0, len(order))
