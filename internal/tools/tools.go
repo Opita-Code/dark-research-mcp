@@ -1,0 +1,164 @@
+// Package tools registers all dark-research tools with the MCP server.
+//
+// v0.1 scope (research INSTRUCCIONES.md Fase 2): web_search, web_fetch,
+// url_extract_components, text_anonymize.
+package tools
+
+import (
+	"github.com/dark-agents/research-mcp/internal/config"
+	"github.com/dark-agents/research-mcp/internal/mem"
+	"github.com/dark-agents/research-mcp/internal/research"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
+)
+
+// Deps bundles optional cross-cutting dependencies injected at Register
+// time (mem store for persistence, session id for tagging).
+type Deps struct {
+	Mem     *mem.Store
+	Session string
+}
+
+// shared holds cross-cutting state injected at Register time.
+var shared sharedState
+
+type sharedState struct {
+	mem     *mem.Store
+	session string
+	router  *research.Router
+}
+
+// Register adds every tool in this package to s.
+func Register(s *server.MCPServer, cfg config.Config, deps Deps) error {
+	if deps.Mem != nil {
+		shared.mem = deps.Mem
+		shared.session = deps.Session
+	}
+	shared.router = research.NewRouter(research.DefaultRegistry(), nil)
+	if shared.mem != nil {
+		shared.router.SetMem(shared.mem)
+	}
+	if shared.session != "" {
+		shared.router.SetSession(shared.session)
+	}
+	for _, t := range All(cfg) {
+		s.AddTool(t.Definition, t.Handler)
+	}
+	return nil
+}
+
+// Tool groups the parts every registered tool needs.
+type Tool struct {
+	Definition mcp.Tool
+	Handler    server.ToolHandlerFunc
+}
+
+// All returns every tool this binary knows about, in registration order.
+func All(cfg config.Config) []Tool {
+	c := newClients(cfg)
+	return []Tool{
+		// Meta router.
+		darkResearchTool(),
+		// 13 intent-specialized tools. Each declares its primary
+		// backend(s) so the LLM can pick the right one without
+		// relying on the heuristic classifier.
+		darkResearchIntentTool("web",
+			"General web search. Backends: DuckDuckGo HTML (no auth, scraping) → SearXNG instance → Brave (free tier w/ key). Best for: blog posts, news articles, landing pages, general queries. Returns title/url/snippet + confidence (0.7-0.85) + freshness."),
+		darkResearchIntentTool("academic",
+			"Academic / paper search. Backends: OpenAlex (240M+ scholarly works, no auth) → arXiv API (preprints, no auth) → Semantic Scholar (free w/ key). Best for: peer-reviewed papers, preprints, citations, DOIs (10.xxxx/yyyy). Returns title/url/publication_date + confidence 0.9+."),
+		darkResearchIntentTool("code",
+			"Code / package search. Backends: crates.io (Rust, no auth) → npm registry (JS, no auth) → GitHub (free tier w/ GITHUB_TOKEN). Best for: library names, GitHub URLs, package discovery. Returns name/url/description + freshness."),
+		darkResearchIntentTool("cve",
+			"Vulnerability / CVE lookup. Backends: OSV.dev (Google's curated vuln db, no auth, 0.95 conf) → NVD (NIST, 5 req/30s, 0.97 conf). Pass a CVE-YYYY-NNNN id. Returns id/url/summary + CVSS severity + ecosystem aliases."),
+		darkResearchIntentTool("domain",
+			"Domain WHOIS / RDAP lookup. Backends: rdap.org (IANA bootstrap, 0.95 conf). Pass a domain like example.com. Returns handle/status/events/registrar."),
+		darkResearchIntentTool("dns",
+			"DNS record lookup. Backends: Cloudflare DoH (1.1.1.1) → Google DoH (8.8.8.8). Pass a domain. Returns A/AAAA/MX/TXT records."),
+		darkResearchIntentTool("cert",
+			"Certificate Transparency search. Backends: crt.sh (no auth, 0.95 conf). Pass a domain. Returns every cert ever issued for the domain with issuer, validity dates."),
+		darkResearchIntentTool("ip",
+			"IP geolocation / ASN / WHOIS. Backends: ip-api.com (45/min, no auth) → RIPE DB (free, 0.95 conf). Pass an IPv4 or IPv6 literal. Returns country/city/ISP/Org/ASN."),
+		darkResearchIntentTool("threat",
+			"Threat intel / IOC lookup. Backends: abuse.ch URLhaus (no auth, 0.92 conf) → AlienVault OTX (free w/ key). Pass a domain or IP to find known-bad URLs/malware."),
+		darkResearchIntentTool("email",
+			"Email breach lookup (HIBP). Requires HIBP_API_KEY env. Backends: haveibeenpwned.com. Pass an email. Returns list of breaches with pwn count and dates. For username enumeration without API key, use web_fetch against holehe/sherlock local installs (out of scope here)."),
+		darkResearchIntentTool("dark",
+			"Dark web search via Ahmia.fi (clearnet index of .onion, 0.7 conf). Pass a search term or .onion URL. For actual .onion fetch, configure tor.socks5_url in config and onion_fetch will route via SOCKS5."),
+		darkResearchIntentTool("geo",
+			"Geocoding. Backends: OpenStreetMap Nominatim (no auth, 0.9 conf). Pass a place name like 'Tokyo' or '10 Downing Street'. Returns lat/lon + display_name."),
+		darkResearchIntentTool("news",
+			"News / events. Backends: GDELT (global news graph, no auth) → Wayback Machine CDX (archived pages). Pass keywords. Returns articles with seendate (GDELT) or capture timestamps (Wayback)."),
+		// Multi-intent parallel query.
+		darkResearchMultiTool(),
+		// Memory layer.
+		darkMemRecallTool(),
+		darkMemStatusTool(),
+		darkMemSchemaStatusTool(),
+		darkMemLinkTool(),
+		darkMemListRunsTool(),
+		darkMemListItemsTool(),
+		// vibe-flow CRUD (specs, brands, compliance, artifacts, drift).
+		specCreateTool(),
+		specGetTool(),
+		specListTool(),
+		brandRegisterTool(),
+		brandGetTool(),
+		brandListTool(),
+		complianceRegisterTool(),
+		complianceGetTool(),
+		complianceListTool(),
+		artifactLogTool(),
+		artifactGetTool(),
+		artifactListTool(),
+		driftLogTool(),
+		driftGetTool(),
+		driftListTool(),
+		// dark-ssd: LLM-as-judge (brand_match, compliance_check, drift_judge, grounding_check).
+		brandMatchTool(),
+		complianceCheckTool(),
+		driftJudgeTool(),
+		groundingCheckTool(),
+		listSDDEvaluationsTool(),
+		// Standalone tools (unchanged).
+		webSearchTool(c),
+		webFetchTool(c),
+		urlExtractComponentsTool(),
+		textAnonymizeTool(),
+	}
+}
+
+// clients bundles the HTTP clients (clearnet + tor) shared across tools.
+type clients struct {
+	clearnet *httpClient
+	tor      *httpClient // nil until Tor mode is configured
+	Cfg      config.Config
+}
+
+func newClients(cfg config.Config) *clients {
+	c := &clients{Cfg: cfg}
+	c.clearnet = newHTTPClient(cfg, false)
+	if cfg.Tor.Mode == "external" && cfg.Tor.SOCKS5URL != "" {
+		c.tor = newHTTPClient(cfg, true)
+	}
+	return c
+}
+
+// sharedRouter returns the singleton router (after Register ran). Tool
+// handlers that want to invoke the router should call this rather than
+// constructing their own — that way persistence and session id are
+// consistent across the binary.
+func sharedRouter() *research.Router {
+	if shared.router == nil {
+		shared.router = research.NewRouter(research.DefaultRegistry(), nil)
+		if shared.mem != nil {
+			shared.router.SetMem(shared.mem)
+		}
+		if shared.session != "" {
+			shared.router.SetSession(shared.session)
+		}
+	}
+	return shared.router
+}
+
+// sharedMem returns the mem store (nil if persistence disabled).
+func sharedMem() *mem.Store { return shared.mem }

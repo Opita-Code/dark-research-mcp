@@ -1,0 +1,41 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test artifacts
+*.test
+*.out
+coverage.html
+coverage.out
+
+# Go workspace
+go.work
+go.work.sum
+
+# Local config
+dark-research.toml
+*.local.yaml
+
+# LLM response cache (regenerated on demand)
+/llm-cache.json
+
+# Temp / scratch files used by smoke tests
+/smoke-cache-*.json
+/scratch/
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# dark.db (production SQLite; lives outside the repo by convention)
+dark.db
+dark.db-*
