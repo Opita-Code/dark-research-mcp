@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "label": "backends",
+  "message": "14/16 ok (2 issues)",
+  "color": "yellow",
+  "namedLogo": "darkreader",
+  "cacheSeconds": 3600
+}
+
+<!--
+  Raw counts (for tooling that wants them):
+  ok=13 auth=1 redirect=0 timeout=1 fail=1 total=16 last_checked=2026-07-11T19:26:54Z
+-->

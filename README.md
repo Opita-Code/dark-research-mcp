@@ -18,9 +18,10 @@
 **El servidor MCP que une investigación, prompting y validación con IA — en español.**
 
 [![MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Go 1.22+](https://img.shields.io/badge/Go-1.22%2B-00ADD8?logo=go&logoColor=white)](go.mod)
+[![Go 1.25+](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](go.mod)
 [![MCP tools](https://img.shields.io/badge/MCP-57%20tools-blueviolet)](ARCHITECTURE.md)
-[![Tests](https://img.shields.io/badge/tests-100%20passing-brightgreen)](.github/workflows/go-test.yml)
+[![Tests](https://img.shields.io/badge/tests-156%20passing-brightgreen)](.github/workflows/go-test.yml)
+[![Backends](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Opita-Code/dark-research-mcp/main/status.json)](BACKEND_STATUS.md)
 [![CI](https://github.com/Opita-Code/dark-research-mcp/workflows/Go%20test/badge.svg)](.github/workflows/go-test.yml)
 
 [¿Qué hace?](#qué-hace) · [¿Para quién?](#para-quién) · [Quickstart](#quickstart) · [Arquitectura](#arquitectura) · [Papers](#papers-y-mentalidad)

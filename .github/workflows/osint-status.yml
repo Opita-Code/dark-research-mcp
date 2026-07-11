@@ -2,11 +2,11 @@
 #
 # Weekly cron that probes every OSINT backend registered in
 # scripts/osint-status.sh and commits the resulting BACKEND_STATUS.md
-# so consumers (humans, dashboards, the README badge) can see live
-# health at a glance.
+# and a shields.io endpoint JSON (status.json) so consumers (humans,
+# dashboards, the README badge) can see live health at a glance.
 #
 # Non-gating by design: this workflow never fails the build on a
-# backend outage. Outages show up in the committed file and the
+# backend outage. Outages show up in the committed files and the
 # GitHub Actions step summary, not as a red X on PRs.
 
 name: OSINT backend status
@@ -41,8 +41,20 @@ jobs:
         run: |
           set +e
           ./scripts/osint-status.sh --out BACKEND_STATUS.md
+          echo "exit=$?"
           exit 0
         shell: bash
+
+      - name: Render shields.io endpoint JSON
+        # status.json at the repo root is consumed by the README badge:
+        #   https://img.shields.io/endpoint?url=.../status.json
+        # Regenerated from BACKEND_STATUS.md so the badge and the
+        # report are always in sync.
+        run: |
+          chmod +x ./scripts/render-status-json.sh
+          ./scripts/render-status-json.sh \
+            --in BACKEND_STATUS.md \
+            --out status.json
 
       - name: Show summary
         run: |
@@ -56,9 +68,9 @@ jobs:
         run: |
           git config user.email "ci-bot@dark-agents.local"
           git config user.name "dark-agents-ci-bot"
-          git add BACKEND_STATUS.md
+          git add BACKEND_STATUS.md status.json
           if git diff --staged --quiet; then
-            echo "No changes to BACKEND_STATUS.md; skipping commit."
+            echo "No changes to BACKEND_STATUS.md or status.json; skipping commit."
           else
             # Use the workflow run URL in the commit message so the
             # source of the report is traceable from git log.
