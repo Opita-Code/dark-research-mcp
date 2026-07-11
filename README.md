@@ -175,14 +175,15 @@ Cada LLM-as-judge persiste su verdict en `sdd_evaluations` con `prompt_version` 
         │   │  └ standalone (4)        │     │
         │   └──────────────────────────┘     │
         │                                    │
-        │   ┌──────────────────────────┐     │
-        │   │  internal/               │     │
-        │   │  ├ llm (Anthropic-compat)│◄──── SDD_LLM_API_KEY
-        │   │  ├ mem (SQLite + mig.)   │◄──── DARK_DB
-        │   │  ├ research (13 backends)│     │
-        │   │  ├ safety (SSRF guard)   │     │
-        │   │  └ vault (cross-platform)│     │
-        │   └──────────────────────────┘     │
+         │   ┌──────────────────────────┐     │
+         │   │  internal/               │     │
+         │   │  ├ llm (Anthropic-compat)│◄──── SDD_LLM_API_KEY
+         │   │  ├ mem (SQLite + mig.)   │◄──── DARK_DB
+         │   │  ├ research (16 backends)│     │
+         │   │  │  └ testutil (VCR)     │◄──── fixtures/
+         │   │  ├ safety (SSRF guard)   │     │
+         │   │  └ vault (cross-platform)│     │
+         │   └──────────────────────────┘     │
         └────────────────┬───────────────────┘
                          │
                          ▼
@@ -244,15 +245,40 @@ go build ./...
 go test -race ./...
 ```
 
-100 tests pasando. CI corre vet/build/test (`-race`) en Go 1.22 + 1.23.
+156 tests pasando. CI corre vet/build/test (`-race`) en Go 1.25 + 1.26.
 
 ```
-internal/llm      16 tests   (8 client + 8 cache)
-internal/mem      38 tests   (CRUD + migrations + lists + ssd)
-internal/research 15 tests   (classifier + backend registry)
-internal/safety    9 tests   (URL validation, SSRF guard)
-internal/tools    17 tests   (catalog + artifact_download + consensus + e2e)
-internal/vault     5 tests   (cross-platform interface)
+internal/llm                 16 tests   (8 client + 8 cache)
+internal/mem                 38 tests   (CRUD + migrations + lists + ssd)
+internal/research            55 tests   (15 classifier + 26 parser unit + 14 VCR router)
+internal/research/testutil   12 tests   (RecordingTransport record/replay/scrub)
+internal/safety               9 tests   (URL validation, SSRF guard)
+internal/tools               21 tests   (catalog + artifact_download + consensus + e2e)
+internal/vault                5 tests   (cross-platform interface)
+```
+
+### Backend status monitoring
+
+Los 16 backends OSINT no son nuestro código — son servicios externos
+que pueden cambiar de API o caerse. Por eso tenemos dos capas de
+observabilidad, no solo una:
+
+1. **VCR fixtures** (`internal/research/testutil/` + `fixtures/`) — los
+   tests del parser y del router corren contra respuestas grabadas
+   reales. CI no depende de la red, y un cambio de formato en un
+   backend falla el test en segundos, no en producción.
+2. **Live status probe** (`scripts/osint-status.sh`) — corre en cada PR
+   (`osint-smoke` job) y semanalmente (`osint-status` workflow).
+   Sondea los 16 backends en paralelo, escribe
+   [`BACKEND_STATUS.md`](BACKEND_STATUS.md) con HTTP code + latencia
+   por backend, y auto-commit'a los cambios. Outages aparecen visibles
+   sin abrir un issue.
+
+Para refrescar fixtures cuando un backend cambia su API:
+
+```sh
+RECORD_FIXTURES=1 go test -count=1 -run 'TestRouter_' ./internal/research/
+git diff fixtures/   # revisar el diff antes de commit
 ```
 
 ---
@@ -262,6 +288,7 @@ internal/vault     5 tests   (cross-platform interface)
 - ✅ **v0.3.0** — dark_ssd_consensus (multi-sample judging) + dark_research_artifact_download (canonical fetch pattern) + tier-2 dark_mem_export_run/diff; 57 tools, 100 tests
 - ✅ **v0.2.0** — CRUD completion (update/delete on 5 tables), spec_render, pii_detect + prompt_injection_scan (security gates); 53 tools, 80 tests
 - ✅ **v0.1.0** — initial open-source release (45 tools, 72 tests, CI, MIT)
+- 🆕 **unreleased** — VCR fixture transport (`internal/research/testutil/`) + 40 new tests (parser unit + VCR router) covering 13 backends with recorded responses; live status probe (`scripts/osint-status.sh`) + weekly `osint-status` workflow; **156 tests**
 - 🚧 Add `go-keyring` impl for Linux/macOS vault
 - 🚧 Spec diff library (structured change detection)
 - 🚧 Cross-platform release artifacts in CI
