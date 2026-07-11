@@ -17,6 +17,13 @@ import (
 // Getenv reads an env var. Exposed as a var so tests can stub it.
 var Getenv = os.Getenv
 
+// Version is stamped into the User-Agent on every outbound request.
+// Defaults to "dev"; the release build sets it via -ldflags
+// "-X github.com/dark-agents/research-mcp/internal/research.Version=0.3.1".
+// Backends that fingerprint by user-agent see one consistent string
+// per binary.
+var Version = "dev"
+
 // MemSink is the interface dark-mem must satisfy for the router to
 // persist runs. Defined here to avoid an import cycle (research does
 // not import mem; mem imports nothing).
@@ -220,7 +227,7 @@ func (r *Router) call(ctx context.Context, b Backend, query string) ([]byte, err
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "dark-research-mcp/0.2 (+https://github.com/dark-agents/research-mcp)")
+	req.Header.Set("User-Agent", "dark-research-mcp/"+Version+" (+https://github.com/Opita-Code/dark-research-mcp)")
 	req.Header.Set("Accept", "application/json, text/html;q=0.9")
 
 	if b.Auth != "" {

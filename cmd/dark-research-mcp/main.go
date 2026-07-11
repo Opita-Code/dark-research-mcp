@@ -18,9 +18,18 @@ import (
 	"github.com/dark-agents/research-mcp/internal/config"
 	"github.com/dark-agents/research-mcp/internal/llm"
 	"github.com/dark-agents/research-mcp/internal/mem"
+	"github.com/dark-agents/research-mcp/internal/research"
 	darkserver "github.com/dark-agents/research-mcp/internal/server"
 	"github.com/dark-agents/research-mcp/internal/tools"
 )
+
+// version is set at link time via:
+//
+//	go build -ldflags "-X main.version=0.3.1" ./cmd/dark-research-mcp
+//
+// The default "dev" is what you get from a plain `go build` for local
+// development. CI release builds always set the real version.
+var version = "dev"
 
 func main() {
 	cfgPath := flag.String("config", "", "path to config file (default: $DARK_RESEARCH_CONFIG or ./dark-research.toml)")
@@ -28,7 +37,16 @@ func main() {
 	dbPath := flag.String("db", "", "path to dark.db (default: $DARK_DB or %LOCALAPPDATA%\\dark-agents\\dark.db)")
 	cachePath := flag.String("cache", "", "path to LLM cache file (default: $DARK_SSD_CACHE_PATH or $DARK_DB_DIR/llm-cache.json; empty disables)")
 	cacheTTL := flag.Duration("cache-ttl", time.Hour, "LLM cache TTL (e.g. 30m, 2h, 24h)")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("dark-research-mcp %s\n", version)
+		os.Exit(0)
+	}
+
+	// Stamp the research User-Agent with our build version.
+	research.Version = version
 
 	log.SetOutput(os.Stderr)
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
