@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/dark-agents/research-mcp/internal/config"
+	"github.com/dark-agents/research-mcp/internal/constitution"
 	"github.com/dark-agents/research-mcp/internal/llm"
 	"github.com/dark-agents/research-mcp/internal/mem"
 	"github.com/dark-agents/research-mcp/internal/research"
@@ -25,7 +26,7 @@ import (
 
 // version is set at link time via:
 //
-//	go build -ldflags "-X main.version=0.3.1" ./cmd/dark-research-mcp
+//	go build -ldflags "-X main.version=0.4.0-rc.2" ./cmd/dark-research-mcp
 //
 // The default "dev" is what you get from a plain `go build` for local
 // development. CI release builds always set the real version.
@@ -37,6 +38,7 @@ func main() {
 	dbPath := flag.String("db", "", "path to dark.db (default: $DARK_DB or %LOCALAPPDATA%\\dark-agents\\dark.db)")
 	cachePath := flag.String("cache", "", "path to LLM cache file (default: $DARK_SSD_CACHE_PATH or $DARK_DB_DIR/llm-cache.json; empty disables)")
 	cacheTTL := flag.Duration("cache-ttl", time.Hour, "LLM cache TTL (e.g. 30m, 2h, 24h)")
+	constitutionSpec := flag.String("constitution", "", "active constitution: 'light' (default), 'dark' (requires -tags allow_builtin_dark), 'user/<id>' (in ~/.dark-research/constitutions/), or an absolute .toml path. Also reads $DARK_CONSTITUTION.")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
@@ -78,6 +80,19 @@ func main() {
 	defer store.Close()
 	log.Printf("dark-research-mcp: db=%s", db)
 
+	// Resolve the active constitution. Precedence: --constitution
+	// flag > $DARK_CONSTITUTION env var > default (light). The
+	// dark constitution is only available in binaries built with
+	// -tags allow_builtin_dark; referencing it on a stock build
+	// is a clear error, not a silent fallback to light.
+	constitution.Initialize()
+	if err := initConstitution(*constitutionSpec); err != nil {
+		fmt.Fprintf(os.Stderr, "constitution error: %v\n", err)
+		os.Exit(2)
+	}
+	active := constitution.Active()
+	log.Printf("dark-research-mcp: constitution=%s source=%s", active.ID(), active.Source)
+
 	// Initialize the optional LLM response cache. Disabled unless an
 	// explicit path is provided via --cache or $DARK_SSD_CACHE_PATH.
 	// When the dark-ssd tools run with a cache attached, identical
@@ -102,6 +117,24 @@ func main() {
 		fmt.Fprintf(os.Stderr, "serve error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// initConstitution resolves and activates the constitution chosen by
+// the user. The precedence order is:
+//   1. --constitution flag (passed in as flag)
+//   2. DARK_CONSTITUTION env var
+//   3. light default (built-in)
+//
+// On error, we fail loud and exit non-zero. A user who explicitly
+// asked for "dark" on a stock build should see the error, not a
+// silent fallback to light.
+func initConstitution(flagSpec string) error {
+	spec := flagSpec
+	if spec == "" {
+		spec = os.Getenv("DARK_CONSTITUTION")
+	}
+	_, err := constitution.SetActiveFromFlag(spec)
+	return err
 }
 
 func defaultDBPath() string {
