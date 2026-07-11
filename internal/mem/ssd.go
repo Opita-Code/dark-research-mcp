@@ -13,6 +13,14 @@ import (
 // ---------------------------------------------------------------------------
 
 // SaveSDDEvaluation inserts an LLM-as-judge verdict and returns its ID.
+//
+// v3 added five optional columns (constitution_id, constitution_version,
+// active_mods_json, refused_attempts, refusal_pattern). Pre-v3 callers
+// (no fields set) continue to work — the new columns are populated
+// with NULL / 0. Post-v3 callers (the constitution-aware SSD tools in
+// Fase 1+) populate them from the active constitution + mod context.
+// refused_attempts defaults to 0 at the DB layer; the int zero value
+// maps cleanly to that.
 func (s *Store) SaveSDDEvaluation(ctx context.Context, e *SDDEvaluation) (int64, error) {
 	if e == nil || e.EvalType == "" || e.TargetType == "" || e.TargetID == "" {
 		return 0, fmt.Errorf("mem: sdd_evaluation requires eval_type + target_type + target_id")
@@ -23,10 +31,16 @@ func (s *Store) SaveSDDEvaluation(ctx context.Context, e *SDDEvaluation) (int64,
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO sdd_evaluations (eval_type, target_type, target_id, verdict_json, confidence, prompt_version, model, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO sdd_evaluations (
+			eval_type, target_type, target_id, verdict_json, confidence,
+			prompt_version, model, created_at,
+			constitution_id, constitution_version, active_mods_json,
+			refused_attempts, refusal_pattern
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.EvalType, e.TargetType, e.TargetID, e.VerdictJSON, e.Confidence,
 		nullString(e.PromptVersion), nullString(e.Model), e.CreatedAt,
+		nullString(e.ConstitutionID), nullString(e.ConstitutionVersion),
+		nullString(e.ActiveModsJSON), e.RefusedAttempts, nullString(e.RefusalPattern),
 	)
 	if err != nil {
 		return 0, fmt.Errorf("mem: insert sdd_evaluation: %w", err)
@@ -37,13 +51,21 @@ func (s *Store) SaveSDDEvaluation(ctx context.Context, e *SDDEvaluation) (int64,
 // LatestSDDEvaluation returns the most recent evaluation for a target.
 func (s *Store) LatestSDDEvaluation(ctx context.Context, evalType, targetType, targetID string) (*SDDEvaluation, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, eval_type, target_type, target_id, verdict_json, confidence, prompt_version, model, created_at
+		`SELECT id, eval_type, target_type, target_id, verdict_json, confidence,
+		        prompt_version, model, created_at,
+		        constitution_id, constitution_version, active_mods_json,
+		        refused_attempts, refusal_pattern
 		 FROM sdd_evaluations
 		 WHERE eval_type = ? AND target_type = ? AND target_id = ?
 		 ORDER BY id DESC LIMIT 1`, evalType, targetType, targetID)
 	var e SDDEvaluation
-	var promptVersion, model sql.NullString
-	if err := row.Scan(&e.ID, &e.EvalType, &e.TargetType, &e.TargetID, &e.VerdictJSON, &e.Confidence, &promptVersion, &model, &e.CreatedAt); err != nil {
+	var promptVersion, model, constitutionID, constitutionVersion, activeModsJSON, refusalPattern sql.NullString
+	if err := row.Scan(
+		&e.ID, &e.EvalType, &e.TargetType, &e.TargetID, &e.VerdictJSON, &e.Confidence,
+		&promptVersion, &model, &e.CreatedAt,
+		&constitutionID, &constitutionVersion, &activeModsJSON,
+		&e.RefusedAttempts, &refusalPattern,
+	); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
@@ -55,6 +77,18 @@ func (s *Store) LatestSDDEvaluation(ctx context.Context, evalType, targetType, t
 	if model.Valid {
 		e.Model = model.String
 	}
+	if constitutionID.Valid {
+		e.ConstitutionID = constitutionID.String
+	}
+	if constitutionVersion.Valid {
+		e.ConstitutionVersion = constitutionVersion.String
+	}
+	if activeModsJSON.Valid {
+		e.ActiveModsJSON = activeModsJSON.String
+	}
+	if refusalPattern.Valid {
+		e.RefusalPattern = refusalPattern.String
+	}
 	return &e, nil
 }
 
@@ -64,7 +98,10 @@ func (s *Store) ListSDDEvaluations(ctx context.Context, evalType, targetType str
 	if limit <= 0 {
 		limit = 20
 	}
-	q := `SELECT id, eval_type, target_type, target_id, verdict_json, confidence, prompt_version, model, created_at
+	q := `SELECT id, eval_type, target_type, target_id, verdict_json, confidence,
+	             prompt_version, model, created_at,
+	             constitution_id, constitution_version, active_mods_json,
+	             refused_attempts, refusal_pattern
 	      FROM sdd_evaluations WHERE 1=1`
 	args := []any{}
 	if evalType != "" {
@@ -87,8 +124,13 @@ func (s *Store) ListSDDEvaluations(ctx context.Context, evalType, targetType str
 	out := []SDDEvaluation{}
 	for rows.Next() {
 		var e SDDEvaluation
-		var promptVersion, model sql.NullString
-		if err := rows.Scan(&e.ID, &e.EvalType, &e.TargetType, &e.TargetID, &e.VerdictJSON, &e.Confidence, &promptVersion, &model, &e.CreatedAt); err != nil {
+		var promptVersion, model, constitutionID, constitutionVersion, activeModsJSON, refusalPattern sql.NullString
+		if err := rows.Scan(
+			&e.ID, &e.EvalType, &e.TargetType, &e.TargetID, &e.VerdictJSON, &e.Confidence,
+			&promptVersion, &model, &e.CreatedAt,
+			&constitutionID, &constitutionVersion, &activeModsJSON,
+			&e.RefusedAttempts, &refusalPattern,
+		); err != nil {
 			return nil, err
 		}
 		if promptVersion.Valid {
@@ -96,6 +138,18 @@ func (s *Store) ListSDDEvaluations(ctx context.Context, evalType, targetType str
 		}
 		if model.Valid {
 			e.Model = model.String
+		}
+		if constitutionID.Valid {
+			e.ConstitutionID = constitutionID.String
+		}
+		if constitutionVersion.Valid {
+			e.ConstitutionVersion = constitutionVersion.String
+		}
+		if activeModsJSON.Valid {
+			e.ActiveModsJSON = activeModsJSON.String
+		}
+		if refusalPattern.Valid {
+			e.RefusalPattern = refusalPattern.String
 		}
 		out = append(out, e)
 	}

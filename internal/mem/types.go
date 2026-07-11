@@ -131,14 +131,115 @@ type DriftReport struct {
 // SDDEvaluation is one LLM-as-judge verdict. Stored in sdd_evaluations.
 // Use this to audit the agent's reasoning ("why did we brand_match
 // with 0.4?") and to feed a calibration loop later.
+//
+// v3 added five columns for constitution-aware audit: ConstitutionID,
+// ConstitutionVersion, ActiveModsJSON, RefusedAttempts, RefusalPattern.
+// Pre-v3 rows have these as zero values; post-v3 writes populate them
+// from the constitution loader context. The JSON tags use omitempty so
+// the existing tool contract is unchanged for callers that don't
+// supply these.
 type SDDEvaluation struct {
-	ID            int64  `json:"id"`
-	EvalType      string `json:"eval_type"`            // brand_match | compliance_check | drift_judge | grounding_check
-	TargetType    string `json:"target_type"`          // artifact | spec | claim
-	TargetID      string `json:"target_id"`            // string for flexibility
-	VerdictJSON   string `json:"verdict_json"`         // opaque JSON blob
-	Confidence    float32 `json:"confidence"`
-	PromptVersion string `json:"prompt_version,omitempty"`
-	Model         string `json:"model,omitempty"`
-	CreatedAt     string `json:"created_at"`
+	ID                  int64   `json:"id"`
+	EvalType            string  `json:"eval_type"`            // brand_match | compliance_check | drift_judge | grounding_check
+	TargetType          string  `json:"target_type"`          // artifact | spec | claim
+	TargetID            string  `json:"target_id"`            // string for flexibility
+	VerdictJSON         string  `json:"verdict_json"`         // opaque JSON blob
+	Confidence          float32 `json:"confidence"`
+	PromptVersion       string  `json:"prompt_version,omitempty"`
+	Model               string  `json:"model,omitempty"`
+	ConstitutionID      string  `json:"constitution_id,omitempty"`
+	ConstitutionVersion string  `json:"constitution_version,omitempty"`
+	ActiveModsJSON      string  `json:"active_mods_json,omitempty"`
+	RefusedAttempts     int     `json:"refused_attempts"`
+	RefusalPattern      string  `json:"refusal_pattern,omitempty"`
+	CreatedAt           string  `json:"created_at"`
+}
+
+// ---------------------------------------------------------------------------
+// Constitution system types (migration v2).
+//
+// A Constitution is a declarative manifest that defines the agent's
+// identity, authority hierarchy, refusal policy, scope, tone, and the
+// ordered layers of the system prompt. The constitution loader (Fase 1)
+// parses TOML files and persists them here so the same constitution is
+// applied consistently across restarts and across agents that share the
+// dark.db file.
+//
+// A Mod is a drop-in package of knowledge (text/datasets) and/or
+// capabilities (tools, parsers, backends). The mod loader (Fase 2)
+// discovers mod.toml manifests under the user mod path and registers
+// them here. The web-of-mods (Fase 7) will install mods from a remote
+// registry; the `source` column already differentiates user-local from
+// registry-sourced.
+//
+// A ModLoad is one audit row per (mod, session) load event. It lets
+// the agent answer "which mods were active when this judge verdict
+// was emitted?" — the chain-of-custody question that's also
+// answerable for research_runs and vibe_specs.
+// ---------------------------------------------------------------------------
+
+// Constitution is one (constitution_id, version) manifest. The
+// UNIQUE(constitution_id, version) constraint at the DB layer means the
+// same constitution can have multiple versions over time, and
+// sdd_evaluations.constitution_id + constitution_version together
+// reproduce the exact manifest that was in effect.
+type Constitution struct {
+	ID             int64  `json:"id"`
+	ConstitutionID string `json:"constitution_id"`           // e.g. "dark-research/light"
+	Version        string `json:"version"`                  // semver, e.g. "1.0.0"
+	Label          string `json:"label,omitempty"`          // human-readable
+	Source         string `json:"source"`                   // builtin:light | builtin:dark | user:<path>
+	FilePath       string `json:"file_path"`                // absolute path or "<builtin>"
+	ParsedJSON     string `json:"parsed_json"`              // full TOML dump
+	SHA256         string `json:"sha256"`                   // hash of the source file
+	Enabled        bool   `json:"enabled"`                  // 0 = disabled, 1 = active
+	CreatedAt      string `json:"created_at"`
+	ActivatedAt    string `json:"activated_at,omitempty"`
+}
+
+// Mod is one installed mod manifest. ModID is the immutable
+// "namespace/name" handle (e.g. "user/osint-cve-deepdive"); Version is
+// semver. Source tracks provenance for the future registry.
+// ManifestJSON is the parsed mod.toml so a downgrade of the loader
+// can still read older manifests. SHA256 catches tampering of the
+// source files between activations.
+//
+// RiskClass and TargetScope are surfaced in the future web-of-mods UI
+// so users can filter / warn before installing.
+type Mod struct {
+	ID           int64  `json:"id"`
+	ModID        string `json:"mod_id"`               // e.g. "user/osint-cve-deepdive"
+	Name         string `json:"name"`
+	Version      string `json:"version"`              // semver
+	Source       string `json:"source"`               // user:<path> | registry:<url>
+	ManifestJSON string `json:"manifest_json"`        // parsed mod.toml
+	SHA256       string `json:"sha256"`
+	RiskClass    string `json:"risk_class,omitempty"`          // research-only | active-probing | exploit-development
+	TargetScope  string `json:"target_scope,omitempty"`        // public_internet | private_infrastructure | darkweb
+	RequiresTor  bool   `json:"requires_tor"`
+	CreatedAt    string `json:"created_at"`
+	UpdatedAt    string `json:"updated_at,omitempty"`
+}
+
+// ModLoad is one load event: "mod X was loaded at time T under
+// constitution Y, took D milliseconds, contributed C capabilities".
+// Error is non-empty when the load failed (e.g. invalid manifest,
+// missing file); the row is still written so the failure is auditable
+// instead of silently dropped.
+//
+// This table is the join point between the constitution system and
+// the existing audit trail (sdd_evaluations, vibe_artifacts,
+// research_runs). Once sdd_evaluations references both
+// constitution_id and active_mods_json, you can ask: "under what
+// constitution + which mods was this judge verdict produced?" — and
+// "what was loaded at the time this artifact was generated?".
+type ModLoad struct {
+	ID                int64  `json:"id"`
+	ModID             string `json:"mod_id"`
+	SessionID         string `json:"session_id,omitempty"`
+	LoadedAt          string `json:"loaded_at"`
+	DurationMs        int64  `json:"duration_ms"`
+	CapabilitiesCount int    `json:"capabilities_count"`
+	Error             string `json:"error,omitempty"`
+	ConstitutionID    string `json:"constitution_id,omitempty"`
 }

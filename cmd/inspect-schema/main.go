@@ -37,7 +37,11 @@ func main() {
 		fmt.Printf("  %s\n", t)
 	}
 
-	fmt.Println("\n=== row counts in vibe_* tables ===")
+	// Row counts grouped by table-family. Constitution system tables
+	// (added in v2) and the schema_migrations bookkeeping are surfaced
+	// explicitly so the agent / user can verify the DB is at the
+	// expected version.
+	fmt.Println("\n=== row counts ===")
 	for _, t := range tables {
 		if len(t) >= 5 && t[:5] == "vibe_" {
 			var n int
@@ -45,4 +49,17 @@ func main() {
 			fmt.Printf("  %s: %d\n", t, n)
 		}
 	}
+	fmt.Println("\n--- constitution system (v2) ---")
+	for _, t := range []string{"constitutions", "mods", "mod_loads"} {
+		var n int
+		_ = conn.QueryRow("SELECT COUNT(*) FROM " + t).Scan(&n)
+		fmt.Printf("  %s: %d\n", t, n)
+	}
+	fmt.Println("\n--- sdd_evaluations (anti-refusal audit, v3) ---")
+	var sddN int
+	_ = conn.QueryRow("SELECT COUNT(*) FROM sdd_evaluations").Scan(&sddN)
+	fmt.Printf("  sdd_evaluations: %d\n", sddN)
+	var refusedN int
+	_ = conn.QueryRow("SELECT COUNT(*) FROM sdd_evaluations WHERE refused_attempts > 0").Scan(&refusedN)
+	fmt.Printf("  ...where refused_attempts > 0: %d\n", refusedN)
 }
