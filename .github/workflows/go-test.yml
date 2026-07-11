@@ -47,7 +47,12 @@ jobs:
         if: matrix.go-version == '1.26'
 
   # OSINT backends are network-dependent. We don't fail CI on transient
-  # outages, but we want a record of which ones regressed.
+  # outages, but we want a record of which ones regressed. The
+  # scripts/osint-status.sh probe covers all 16 backends in parallel
+  # (~10s) and surfaces results in $GITHUB_STEP_SUMMARY so reviewers
+  # can see them without leaving the PR. The committed
+  # BACKEND_STATUS.md is refreshed weekly by the dedicated
+  # osint-status workflow; this on-PR run is the in-loop signal.
   osint-smoke:
     name: OSINT backend smoke (live, best-effort)
     runs-on: ubuntu-latest
@@ -55,17 +60,22 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
-        with:
-          go-version: "1.26"
-          cache: true
-      - name: Build binary
-        run: go build -o ./bin/dark-research-mcp ./cmd/dark-research-mcp
-      - name: Smoke (duckduckgo web)
+      - name: Make script executable
+        run: chmod +x ./scripts/osint-status.sh
+      - name: Probe all backends
+        id: probe
+        # set +e lets us capture the report even when probes fail.
         run: |
-          cat <<'EOF' > /tmp/init.json
-          {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}
-          {"jsonrpc":"2.0","method":"notifications/initialized"}
-          {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"dark_research_web","arguments":{"query":"go modules","limit":3}}}
-          EOF
-          cat /tmp/init.json | ./bin/dark-research-mcp 2>/dev/null | head -c 800 || true
+          set +e
+          ./scripts/osint-status.sh --out /tmp/status.md
+          echo "exit=$?"
+          exit 0
+        shell: bash
+      - name: Surface status in PR
+        if: always()
+        run: |
+          {
+            echo "## OSINT backend smoke"
+            echo ""
+            cat /tmp/status.md
+          } >> "$GITHUB_STEP_SUMMARY"

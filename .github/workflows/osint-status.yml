@@ -1,0 +1,71 @@
+# .github/workflows/osint-status.yml
+#
+# Weekly cron that probes every OSINT backend registered in
+# scripts/osint-status.sh and commits the resulting BACKEND_STATUS.md
+# so consumers (humans, dashboards, the README badge) can see live
+# health at a glance.
+#
+# Non-gating by design: this workflow never fails the build on a
+# backend outage. Outages show up in the committed file and the
+# GitHub Actions step summary, not as a red X on PRs.
+
+name: OSINT backend status
+
+on:
+  schedule:
+    # Mondays 06:00 UTC. Weekly cadence keeps API quotas comfortable
+    # (16 backends * 4 = 64 probes/week, well within free limits).
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    # Allow manual trigger from the Actions tab for ad-hoc checks.
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    name: Probe backends + commit status
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # needed for the auto-commit step
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run health checks
+        id: probe
+        # --out writes the markdown report to BACKEND_STATUS.md.
+        # We ignore the script's exit code because the workflow
+        # is advisory; the report itself is what we want.
+        run: |
+          set +e
+          ./scripts/osint-status.sh --out BACKEND_STATUS.md
+          exit 0
+        shell: bash
+
+      - name: Show summary
+        run: |
+          {
+            echo "## OSINT backend status"
+            echo ""
+            cat BACKEND_STATUS.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit if changed
+        run: |
+          git config user.email "ci-bot@dark-agents.local"
+          git config user.name "dark-agents-ci-bot"
+          git add BACKEND_STATUS.md
+          if git diff --staged --quiet; then
+            echo "No changes to BACKEND_STATUS.md; skipping commit."
+          else
+            # Use the workflow run URL in the commit message so the
+            # source of the report is traceable from git log.
+            msg="chore(status): refresh OSINT backend status [skip ci]"
+            msg="${msg}
+
+            Triggered by: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            git commit -m "$msg"
+            git push
+          fi
