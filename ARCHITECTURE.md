@@ -4,7 +4,7 @@ OSINT, vibe-flow CRUD, and LLM-as-judge in a single MCP server. Built for
 the dark-agents-v2 red-team framework (opencode fork).
 
 > Single source of truth: `dark.db` (SQLite, shared with dark-eval).
-> Single API: `dark-research-mcp.exe` (44 MCP tools over stdio).
+> Single API: `dark-research-mcp.exe` (57 MCP tools over stdio).
 > Single LLM: MiniMax-M3 via the Anthropic-compatible API.
 
 ## Layout
@@ -32,12 +32,13 @@ dark-research-mcp/
     server/                        MCP server wiring
     tools/                         one MCP tool per public function
       dark_research.go             14 OSINT tools (router + 13 intents)
-      dark_mem.go                  5 memory tools (recall, status, schema_status, link, list_runs, list_items)
-      vibeflow_data.go             15 vibe-flow tools (5 tables × create/get/list)
-      ssd.go                       5 dark-ssd LLM-as-judge tools
+      dark_mem.go                  6 memory tools (recall, status, schema_status, link, list_runs, list_items)
+      export_diff.go               2 tier-2 memory tools (export_run, diff)
+      vibeflow_data.go             22 vibe-flow tools (5 tables × create/get/list + update/delete + spec_render + artifact_download)
+      ssd.go                       8 dark-ssd LLM-as-judge tools (brand_match, compliance_check, drift_judge, grounding_check, pii_detect, prompt_injection_scan, consensus, list_evaluations)
       web_search.go / web_fetch.go / url_extract.go / html.go / http_client.go
       common.go                    JSON helpers, shared mem accessor
-      tools.go                     All() registration list (44 tools)
+      tools.go                     All() registration list (57 tools)
   .github/workflows/go-test.yml    CI: vet / build / test (-race) on Go 1.22 + 1.23
   go.mod                           module github.com/dark-agents/research-mcp
 ```
@@ -80,14 +81,14 @@ cross-table joins are possible via direct SQL when needed.
 `VibeCase` and the SQL column is `vibe_case` because `case` is a
 reserved word in SQL.
 
-## 53 MCP tools
+## 57 MCP tools
 
 | Family | Count | Tools |
 |---|---|---|
 | OSINT | 15 | `dark_research` (router), `dark_research_<13 intents>`, `dark_research_multi` |
-| memory | 6 | `dark_mem_recall_research`, `dark_mem_status`, `dark_mem_schema_status`, `dark_mem_link_research`, `dark_mem_list_runs`, `dark_mem_list_items` |
-| vibe-flow CRUD | 22 | 5 tables × {create, get, list, update, delete, **render (spec)**} |
-| dark-ssd | 7 | `dark_ssd_brand_match`, `dark_ssd_compliance_check`, `dark_ssd_drift_judge`, `dark_ssd_grounding_check`, `dark_ssd_pii_detect`, `dark_ssd_prompt_injection_scan`, `dark_ssd_list_evaluations` |
+| memory | 8 | `dark_mem_recall_research`, `dark_mem_status`, `dark_mem_schema_status`, `dark_mem_link_research`, `dark_mem_list_runs`, `dark_mem_list_items`, `dark_mem_export_run`, `dark_mem_diff` |
+| vibe-flow CRUD | 22 | specs (6: create/get/list/update/delete/render), brands (4: register/get/list/delete), compliance (3: register/get/list), artifacts (6: log/get/list/update/delete/download), drift (3: log/get/list) |
+| dark-ssd | 8 | `dark_ssd_brand_match`, `dark_ssd_compliance_check`, `dark_ssd_drift_judge`, `dark_ssd_grounding_check`, `dark_ssd_pii_detect`, `dark_ssd_prompt_injection_scan`, `dark_ssd_consensus`, `dark_ssd_list_evaluations` |
 | standalone | 4 | `web_search`, `web_fetch`, `url_extract_components`, `text_anonymize` |
 
 JSON contract: every tool emits snake_case. Go types have explicit

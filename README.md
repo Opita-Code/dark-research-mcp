@@ -19,8 +19,8 @@
 
 [![MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go 1.22+](https://img.shields.io/badge/Go-1.22%2B-00ADD8?logo=go&logoColor=white)](go.mod)
-[![MCP tools](https://img.shields.io/badge/MCP-53%20tools-blueviolet)](ARCHITECTURE.md)
-[![Tests](https://img.shields.io/badge/tests-80%20passing-brightgreen)](.github/workflows/go-test.yml)
+[![MCP tools](https://img.shields.io/badge/MCP-57%20tools-blueviolet)](ARCHITECTURE.md)
+[![Tests](https://img.shields.io/badge/tests-100%20passing-brightgreen)](.github/workflows/go-test.yml)
 [![CI](https://github.com/Opita-Code/dark-research-mcp/workflows/Go%20test/badge.svg)](.github/workflows/go-test.yml)
 
 [¿Qué hace?](#qué-hace) · [¿Para quién?](#para-quién) · [Quickstart](#quickstart) · [Arquitectura](#arquitectura) · [Papers](#papers-y-mentalidad)
@@ -31,11 +31,11 @@
 
 ## ¿Qué hace?
 
-**dark-research-mcp** es un servidor MCP escrito en Go que entrega a tu agente IA **53 herramientas especializadas** agrupadas en tres oficios:
+**dark-research-mcp** es un servidor MCP escrito en Go que entrega a tu agente IA **57 herramientas especializadas** agrupadas en tres oficios:
 
 1. **🔍 Investigación (OSINT)** — 15 herramientas que enrutan consultas a backends nicho (OSV.dev, OpenAlex, RIPE, crt.sh, abuse.ch, DuckDuckGo, GDELT, Wayback, Ahmia, HIBP, ip-api, GitHub, crates.io, npm) con fallback automático.
 2. **🌊 Vibe-flow** — 22 herramientas para gestionar el ciclo completo de producción asistida por IA: spec (create/update/delete/render) → artifact (log/update/delete) → drift → reconcile → publish, con brand y compliance como reference data.
-3. **⚖️ Dark-ssd (LLM-as-judge)** — 7 jueces LLM: brand fit, compliance jurisdiccional, drift spec-vs-artifact, grounding de claims OSINT, **PII detection (GDPR/CCPA)** y **prompt-injection scan** (security gate antes de pasar texto no confiable al agente).
+3. **⚖️ Dark-ssd (LLM-as-judge)** — 8 jueces LLM: brand fit, compliance jurisdiccional, drift spec-vs-artifact, grounding de claims OSINT, **PII detection (GDPR/CCPA)**, **prompt-injection scan** (security gate antes de pasar texto no confiable al agente), y **consensus** (multi-sample judging para verdicts de alto riesgo).
 
 Una sola base SQLite (`dark.db`) compartida con `dark-eval`. Una sola API. Un solo binario (~17 MB). **Sin magia: con código que puedes leer y modificar.**
 
@@ -244,13 +244,14 @@ go build ./...
 go test -race ./...
 ```
 
-72 tests pasando. CI corre vet/build/test (`-race`) en Go 1.22 + 1.23.
+100 tests pasando. CI corre vet/build/test (`-race`) en Go 1.22 + 1.23.
 
 ```
 internal/llm      16 tests   (8 client + 8 cache)
-internal/mem      30 tests   (CRUD + migrations + lists + ssd)
-internal/research 14 tests   (classifier + backend registry)
-internal/safety    8 tests   (URL validation, SSRF guard)
+internal/mem      38 tests   (CRUD + migrations + lists + ssd)
+internal/research 15 tests   (classifier + backend registry)
+internal/safety    9 tests   (URL validation, SSRF guard)
+internal/tools    17 tests   (catalog + artifact_download + consensus + e2e)
 internal/vault     5 tests   (cross-platform interface)
 ```
 
@@ -258,7 +259,8 @@ internal/vault     5 tests   (cross-platform interface)
 
 ## Status
 
-- ✅ **v0.2.0** — CRUD completion (update/delete on 5 tables), spec_render, pii_detect + prompt_injection_scan (security gates), 53 tools total
+- ✅ **v0.3.0** — dark_ssd_consensus (multi-sample judging) + dark_research_artifact_download (canonical fetch pattern) + tier-2 dark_mem_export_run/diff; 57 tools, 100 tests
+- ✅ **v0.2.0** — CRUD completion (update/delete on 5 tables), spec_render, pii_detect + prompt_injection_scan (security gates); 53 tools, 80 tests
 - ✅ **v0.1.0** — initial open-source release (45 tools, 72 tests, CI, MIT)
 - 🚧 Add `go-keyring` impl for Linux/macOS vault
 - 🚧 Spec diff library (structured change detection)
