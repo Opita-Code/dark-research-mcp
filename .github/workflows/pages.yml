@@ -1,0 +1,67 @@
+# .github/workflows/pages.yml
+#
+# Deploy the docs/ directory to GitHub Pages. Triggered when the
+# osint-status workflow (or anyone else) updates docs/index.md, which
+# happens whenever the OSINT backend status report changes.
+#
+# The osint-status workflow writes docs/index.md with a header and
+# the latest BACKEND_STATUS.md content. This Pages workflow then
+# publishes the rendered site at:
+#
+#   https://opita-code.github.io/dark-research-mcp/
+#
+# No external dependency, no third-party service. Just GitHub.
+
+name: Deploy Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "BACKEND_STATUS.md"
+  workflow_dispatch:
+
+# Restrict the GITHUB_TOKEN to the minimum scopes Pages needs.
+# Required even on public repos for actions/deploy-pages@v4.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Prevent a new Pages deploy from cancelling an in-flight one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build with Jekyll
+        # The default Jekyll build (no source override) picks up
+        # docs/index.md and the rest of docs/ automatically. We do
+        # not commit _config.yml because the defaults (theme: minima)
+        # are fine for a status page.
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./docs
+          destination: ./_site
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./_site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

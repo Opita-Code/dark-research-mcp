@@ -56,6 +56,28 @@ jobs:
             --in BACKEND_STATUS.md \
             --out status.json
 
+      - name: Update Pages source
+        # docs/index.md is the human-facing status page rendered by
+        # the pages.yml workflow into the GitHub Pages site. We
+        # prepend a short header so the page is self-explanatory
+        # even if a reader lands there without context.
+        run: |
+          {
+            echo "---"
+            echo "layout: default"
+            echo "title: OSINT backend status"
+            echo "---"
+            echo ""
+            echo "# OSINT backend status"
+            echo ""
+            echo "_Refreshed automatically by the osint-status workflow._"
+            echo "_Source of truth: [BACKEND_STATUS.md](https://github.com/Opita-Code/dark-research-mcp/blob/main/BACKEND_STATUS.md)._"
+            echo ""
+            # Strip the original "# OSINT backend status" header so we
+            # don't render it twice.
+            awk 'NR > 1' BACKEND_STATUS.md
+          } > docs/index.md
+
       - name: Show summary
         run: |
           {
@@ -68,9 +90,9 @@ jobs:
         run: |
           git config user.email "ci-bot@dark-agents.local"
           git config user.name "dark-agents-ci-bot"
-          git add BACKEND_STATUS.md status.json
+          git add BACKEND_STATUS.md status.json docs/index.md
           if git diff --staged --quiet; then
-            echo "No changes to BACKEND_STATUS.md or status.json; skipping commit."
+            echo "No changes to status files; skipping commit."
           else
             # Use the workflow run URL in the commit message so the
             # source of the report is traceable from git log.
