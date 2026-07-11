@@ -200,6 +200,7 @@ func DetectRefusal(text string) RefusalSignal {
 
 	var sig RefusalSignal
 	firstMatchStart := -1
+	var bestNet float32
 	for _, p := range refusalPatterns {
 		loc := p.re.FindStringIndex(text)
 		if loc == nil {
@@ -220,8 +221,12 @@ func DetectRefusal(text string) RefusalSignal {
 			continue
 		}
 		sig.Score += net
-		// Record the highest-weight net pattern.
-		if net > 0 && (sig.Pattern == "" || net > highestWeightSoFar(sig.Pattern)) {
+		// Track the highest-net pattern label for the audit
+		// log. Using net (not raw weight) ensures the label
+		// we record is the one that actually contributed to
+		// the refusal signal after suppressors.
+		if net > bestNet {
+			bestNet = net
 			sig.Pattern = p.label
 		}
 		if firstMatchStart == -1 || loc[0] < firstMatchStart {
@@ -250,16 +255,11 @@ func DetectRefusal(text string) RefusalSignal {
 	return sig
 }
 
-// highestWeightSoFar returns the net weight of the pattern
-// that already won. Used to decide which label to record in
-// the audit log when multiple patterns fire. Walks the
-// catalog — small and the loop is O(n) per match, which is
-// negligible compared to the regex itself.
-func highestWeightSoFar(currentLabel string) float32 {
-	for _, p := range refusalPatterns {
-		if p.label == currentLabel {
-			return p.weight
-		}
-	}
-	return 0
-}
+// bestNetSoFar is the net weight of the pattern that already
+// won the audit-log label. Tracked alongside sig.Pattern so we
+// can decide which label to record when multiple patterns fire.
+// Using net (not raw weight) is important: a pattern with raw
+// weight 1.0 may have net 0.0 after suppressors — the audit
+// log should record the pattern that actually contributed to
+// the refusal signal, not the one that looks heaviest on paper.
+var bestNetSoFar float32

@@ -98,20 +98,11 @@ func (c *Client) CompleteJSONWithRetry(
 			sysPrompt = system + "\n\n" + retryDirective(attempt, maxRetries)
 		}
 
-		// Per-attempt cache key: include the retry attempt
-		// index so different escalation directives don't
-		// collide. Without this, the second attempt would
-		// hit the cache from the first attempt and never
-		// reach the LLM.
-		cacheKey := ""
-		if cache != nil {
-			// Synthesize a distinct cache key per attempt.
-			// The cache is keyed by (model, system, user);
-			// the system prompt varies per attempt, so the
-			// key naturally differs.
-			cacheKey = fmt.Sprintf("%d", attempt)
-			_ = cacheKey
-		}
+		// Note: the cache is keyed by (model, system, user)
+		// inside CompleteCached, so different per-attempt system
+		// prompts (which include different retry directives)
+		// produce different cache keys naturally. No explicit
+		// attempt-index injection is required.
 
 		text, err := c.CompleteCached(ctx, cache, sysPrompt, Message{Role: "user", Content: user})
 		if err != nil {

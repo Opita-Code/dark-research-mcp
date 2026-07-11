@@ -157,6 +157,15 @@ func stripCodeFences(s string) string {
 	return strings.TrimSpace(s)
 }
 
+// StripCodeFencesForTools is the exported version of
+// stripCodeFences, used by the tools package which does not
+// import internal/unexported symbols. Behavior is byte-identical
+// to stripCodeFences; the alias exists to avoid duplicating the
+// implementation in two places.
+func StripCodeFencesForTools(s string) string {
+	return stripCodeFences(s)
+}
+
 func toAnthropicMessages(msgs []Message) []map[string]string {
 	out := make([]map[string]string, len(msgs))
 	for i, m := range msgs {

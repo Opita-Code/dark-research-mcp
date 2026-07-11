@@ -203,22 +203,13 @@ func judgeCompleteJSON(
 	}
 }
 
-// stripCodeFencesForTools mirrors llm.stripCodeFences but is
-// kept in the tools package so the tools package does not need
-// to import the unexported function from llm. Identical
-// behavior; the duplication is intentional and tested.
+// stripCodeFencesForTools is a thin wrapper around
+// llm.StripCodeFences. Exists so the tools package can call
+// it without importing the unexported symbol. The two
+// implementations are kept in sync by the
+// TestStripCodeFences_Parity test in the tools test file.
 func stripCodeFencesForTools(s string) string {
-	s = strings.TrimSpace(s)
-	if strings.HasPrefix(s, "```") {
-		firstNL := strings.Index(s, "\n")
-		if firstNL > 0 {
-			s = s[firstNL+1:]
-		}
-		if strings.HasSuffix(s, "```") {
-			s = s[:len(s)-3]
-		}
-	}
-	return strings.TrimSpace(s)
+	return llm.StripCodeFencesForTools(s)
 }
 
 // --- brand_match ---
@@ -817,7 +808,15 @@ func ssdConsensusTool() Tool {
 					Confidence float32 `json:"confidence"`
 					Reasoning  string  `json:"reasoning"`
 				}
-			if _, err := judgeCompleteJSON(ctx, c, system, user, &v); err != nil {
+			llmResult, err := judgeCompleteJSON(ctx, c, system, user, &v)
+			if err != nil {
+				// On refusal exhaustion, persist the audit row so
+				// the trail is complete. Other errors propagate
+				// without persisting (transient network/parse).
+				if errors.Is(err, llm.ErrRefusalExhausted) {
+					_ = persistRefusal(sharedMem(), ctx, args.EvalType, "consensus_sample", fmt.Sprintf("%d/%d", i+1, args.N), c.Model, system, llmResult)
+					return nil, fmt.Errorf("dark-ssd: consensus sample %d/%d: %w", i+1, args.N, err)
+				}
 				return nil, fmt.Errorf("dark-ssd: consensus sample %d/%d: %w", i+1, args.N, err)
 			}
 				// Pick the "headline" verdict field per eval_type.
@@ -1091,13 +1090,18 @@ func refusalPatternFromResult(r *llm.RefusalResult) string {
 // "refusal_exhausted" recommendation so downstream tools that
 // read sdd_evaluations can detect the failure mode.
 func persistRefusal(m *mem.Store, ctx context.Context, evalType, targetType, targetID, model, _ string, r *llm.RefusalResult) error {
+	pattern := refusalPatternFromResult(r)
+	attempts := 0
+	if r != nil {
+		attempts = r.Attempts
+	}
 	if m == nil {
-		return fmt.Errorf("dark-ssd: refusal exhausted (no mem store); pattern=%q", refusalPatternFromResult(r))
+		return fmt.Errorf("dark-ssd: refusal exhausted (no mem store); pattern=%q", pattern)
 	}
 	refusedVerdict := map[string]any{
 		"refused":         true,
-		"attempts":        r.Attempts,
-		"refused_pattern": refusalPatternFromResult(r),
+		"attempts":        attempts,
+		"refused_pattern": pattern,
 		"last_excerpt":    "",
 		"recommendation":  "retry_with_different_prompt",
 	}
@@ -1107,16 +1111,16 @@ func persistRefusal(m *mem.Store, ctx context.Context, evalType, targetType, tar
 	verdictJSON, _ := json.Marshal(refusedVerdict)
 
 	_, _ = m.SaveSDDEvaluation(ctx, fillConstitutionFields(&mem.SDDEvaluation{
-		EvalType:         evalType,
-		TargetType:       targetType,
-		TargetID:         targetID,
-		VerdictJSON:      string(verdictJSON),
-		Confidence:       0,
-		PromptVersion:    "v1",
-		Model:            model,
-		RefusedAttempts:  r.RefusedAttempts,
-		RefusalPattern:   refusalPatternFromResult(r),
+		EvalType:        evalType,
+		TargetType:      targetType,
+		TargetID:        targetID,
+		VerdictJSON:     string(verdictJSON),
+		Confidence:      0,
+		PromptVersion:   "v1",
+		Model:           model,
+		RefusedAttempts: attempts,
+		RefusalPattern:  pattern,
 	}))
 	return fmt.Errorf("dark-ssd: refusal exhausted after %d attempts; last pattern %q; verdict persisted to sdd_evaluations",
-		r.Attempts, refusalPatternFromResult(r))
+		attempts, pattern)
 }

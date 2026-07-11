@@ -204,7 +204,12 @@ func validateManifest(m *Manifest) error {
 }
 
 // validateModPath checks a path is relative and does not escape
-// the mod root. Absolute paths and ".." components are rejected.
+// the mod root. Absolute paths and ".." path components are
+// rejected. A path component is a ".." if it appears as a
+// complete segment between separators, e.g. "../foo", "foo/../bar",
+// "foo/..", or "..". This is intentionally stricter than
+// filepath.Clean, which collapses "foo/.." away to "foo" before
+// we can see the escape.
 func validateModPath(p string) error {
 	if p == "" {
 		return fmt.Errorf("empty path")
@@ -212,10 +217,23 @@ func validateModPath(p string) error {
 	if filepath.IsAbs(p) {
 		return fmt.Errorf("absolute paths not allowed")
 	}
-	// Clean and check for ".." leakage.
-	cleaned := filepath.Clean(p)
-	if strings.HasPrefix(cleaned, "..") || strings.Contains(cleaned, "/../") || strings.HasSuffix(cleaned, "/..") {
-		return fmt.Errorf("path escapes mod root")
+	// Split on the OS separator. Check that no segment equals "..".
+	// Empty segments (e.g. from a leading "/") are caught by
+	// filepath.IsAbs above; trailing empty segments are fine.
+	segments := strings.Split(p, string(filepath.Separator))
+	for _, s := range segments {
+		if s == ".." {
+			return fmt.Errorf("path escapes mod root (component %q)", s)
+		}
+	}
+	// On Windows, also split on the forward slash so "foo/../bar"
+	// (a common Linux-style entry in a TOML) is also caught.
+	if filepath.Separator == '\\' {
+		for _, s := range strings.Split(p, "/") {
+			if s == ".." {
+				return fmt.Errorf("path escapes mod root (component %q)", s)
+			}
+		}
 	}
 	return nil
 }

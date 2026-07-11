@@ -124,15 +124,14 @@ var Dark *Constitution
 // contract. The dark constitution is parsed separately by
 // Initialize() (called explicitly from main.go) so the build-tag
 // wire-up in loader_dark.go (which assigns loadDark) has already
-// run. Putting the dark parse in init() would race with the
-// build-tag file's init and miss the dark bytes on tagged builds.
-func init() {
-	var err error
-	Light, err = parseAndDecorate(lightFS, "constitutions/light.toml", SourceBuiltinLight, true, "")
-	if err != nil {
-		panic(fmt.Sprintf("constitution: built-in light.toml is invalid: %v", err))
-	}
-}
+// run by the time main() reaches Initialize(). Putting the dark
+// parse in this init() would race with loader_dark.go's init()
+// and miss the dark bytes on tagged builds.
+//
+// (Note: a stale duplicate of this init() used to live further
+// down this file — it was the same code from a previous revision
+// that was not removed when the comment was updated. It has been
+// removed; see git blame if curious.)
 
 // parseAndDecorate is the single parse path. It applies the strict
 // TOML decoder, validates required fields, computes the SHA-256 of
