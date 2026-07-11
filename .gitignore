@@ -38,4 +38,7 @@ Thumbs.db
 
 # dark.db (production SQLite; lives outside the repo by convention)
 dark.db
-dark.db-*
+dark.db-
+
+# Build artifacts for releases (uploaded to GitHub Releases instead)
+/dist/*
