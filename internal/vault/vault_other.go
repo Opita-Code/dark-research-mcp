@@ -20,4 +20,3 @@ func (stubVault) Save(string, string) error   { return ErrNotImplemented }
 func (stubVault) Get(string) (string, error)  { return "", ErrNotImplemented }
 func (stubVault) List() ([]string, error)     { return nil, ErrNotImplemented }
 func (stubVault) Remove(string) error         { return nil } // idempotent on a stub
-}

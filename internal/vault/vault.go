@@ -76,3 +76,33 @@ func ValidateName(name string) error {
 	}
 	return nil
 }
+
+// parseVaultList extracts the secret names from a Test-DarkAgentVault
+// diagnostic blob. The format is:
+//
+//	=== dark-agents-v2 vault diagnostic ===
+//	Target prefix: dark-agents-v2/
+//	Log file:      ...
+//	Stored secrets:
+//	  - NAME1
+//	    preview: ...
+//	  - NAME2
+//	    preview: ...
+//
+// Only the "  - " lines are parsed; everything else is ignored.
+//
+// Lives in vault.go (no build tag) so cross-platform tests can exercise
+// the parser without needing the Windows-only winVault backend.
+func parseVaultList(out string) []string {
+	var names []string
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "- ") {
+			n := strings.TrimSpace(strings.TrimPrefix(line, "- "))
+			if n != "" {
+				names = append(names, n)
+			}
+		}
+	}
+	return names
+}

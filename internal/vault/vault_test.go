@@ -78,6 +78,3 @@ func TestOpen_returnsNonNil(t *testing.T) {
 		t.Fatal("Open() returned nil")
 	}
 }
-
-// Compile-time interface compliance.
-var _ Vault = (*winVault)(nil)

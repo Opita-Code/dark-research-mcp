@@ -26,6 +26,9 @@ type winVault struct {
 	psm string
 }
 
+// Compile-time interface compliance.
+var _ Vault = (*winVault)(nil)
+
 func openPlatform() Vault {
 	psm := defaultPSMPath()
 	return &winVault{psm: psm}
@@ -112,29 +115,6 @@ func (v *winVault) Remove(name string) error {
 	return err
 }
 
-// parseVaultList extracts the secret names from Test-DarkAgentVault's
-// output. The format is:
-//
-//	=== dark-agents-v2 vault diagnostic ===
-//	Target prefix: dark-agents-v2/
-//	Log file:      ...
-//	Stored secrets:
-//	  - NAME1
-//	    preview: ...
-//	  - NAME2
-//	    preview: ...
-//
-// We only care about the "  - " lines.
-func parseVaultList(out string) []string {
-	var names []string
-	for _, line := range strings.Split(out, "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "- ") {
-			n := strings.TrimSpace(strings.TrimPrefix(line, "- "))
-			if n != "" {
-				names = append(names, n)
-			}
-		}
-	}
-	return names
-}
+// parseVaultList lives in vault.go (no build tag) so cross-platform
+// tests can exercise the parser without needing the Windows-only
+// winVault backend. See vault.go for the implementation.
