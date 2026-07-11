@@ -1,0 +1,15 @@
+HTTP/1.1 302 Found
+X-Content-Type-Options: nosniff
+X-Content-Type-Options: nosniff
+Cross-Origin-Opener-Policy: same-origin
+Strict-Transport-Security: max-age=63072000; includeSubdomains
+Content-Type: text/html; charset=utf-8
+Content-Length: 0
+Connection: keep-alive
+Location: /
+X-Frame-Options: DENY
+X-Frame-Options: DENY
+Referrer-Policy: same-origin
+Onion-Location: http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/search/?q=bitcoin
+X-Fixture-Request-Host: ahmia.fi
+

@@ -1,0 +1,12 @@
+HTTP/1.1 200 OK
+Strict-Transport-Security: max-age=300
+X-Nominatim-Server: dulcy.openstreetmap.org
+Content-Type: application/json; charset=utf-8
+Vary: accept-language, Accept-Encoding
+X-Cache-Hits: 0, 0
+X-Timer: S1783796420.175506,VS0,VE627
+Alt-Svc: h3=":443";ma=86400,h3-29=":443";ma=86400,h3-27=":443";ma=86400
+Accept-Ranges: bytes
+X-Fixture-Request-Host: nominatim.openstreetmap.org
+
+[{"place_id":261060749,"licence":"Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright","osm_type":"relation","osm_id":1543125,"lat":"35.6768601","lon":"139.7638947","class":"boundary","type":"administrative","place_rank":8,"importance":0.8337626616070368,"addresstype":"province","name":"東京都","display_name":"東京都, 日本","boundingbox":["20.2145811","35.8984245","135.8536855","154.2055410"]}]

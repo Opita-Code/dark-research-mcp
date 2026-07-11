@@ -1,0 +1,20 @@
+HTTP/1.1 200 OK
+X-Tr: 5154
+X-Page-Cache: BYPASS
+Server-Timing: exclusion.robots;dur=0.053358, exclusion.robots.policy;dur=0.045654, esindex;dur=0.009023
+Server-Timing: TR;dur=0,Tw;dur=0,Tc;dur=0
+Server-Timing: BYPASS
+Set-Cookie: wb-cdx-nomatch-SERVER=wwwb-app217; path=/
+X-Location: cdx
+X-Rl: 1
+X-Na: 0
+X-Nid: COLOMBIA TELECOMUNICACIONES S.A. ESP BIC
+Referrer-Policy: no-referrer-when-downgrade
+X-App-Server: wwwb-app217-dc8
+X-Ts: 200
+Permissions-Policy: interest-cohort=()
+X-Be: wb_cdx_pygwb_nomatch
+Content-Type: application/json
+X-Fixture-Request-Host: web.archive.org
+
+[]

@@ -1,0 +1,9 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Credentials: true
+X-Frame-Options: DENY
+Strict-Transport-Security: max-age=15768000
+X-Fixture-Request-Host: crt.sh
+
+[{"issuer_ca_id":12729740,"issuer_name":"C=US, O=Google Trust Services LLC, CN=WR2","common_name":"github.com","name_value":"github.com","id":11961555293,"entry_timestamp":"2024-04-04T07:00:14.056","not_before":"2024-04-04T00:00:00","not_after":"2024-06-02T23:59:59","serial_number":"0101c4a4b8593c0fc8c80e642ad52e3e0a"},{"issuer_ca_id":12729740,"issuer_name":"C=US, O=Google Trust Services LLC, CN=WR2","common_name":"www.github.com","name_value":"www.github.com","id":11961555294,"entry_timestamp":"2024-04-04T07:00:14.135","not_before":"2024-04-04T00:00:00","not_after":"2024-06-02T23:59:59","serial_number":"0101c4a4b8593c0fc8c80e642ad52e3e0b"}]

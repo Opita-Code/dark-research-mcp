@@ -1,0 +1,17 @@
+HTTP/1.1 302 Found
+Expires: Sun, 12 Jul 2026 05:54:28 GMT
+Server-Timing: cfCacheStatus;desc="HIT"
+Server-Timing: cfEdge;dur=9,cfOrigin;dur=0
+Report-To: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=pZ9IoYCdi50Z%2FdXLnHKcskrbOBwDnB9aAMzscatLJICCDjUU3wRqp2vGrq%2BWxlqSsLB8kesiuMvN1K0ekYsgMyLHdw4yES25rr0H1hbZ5yMYoNC87mA5TFwxYw%3D%3D"}]}
+Nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+Strict-Transport-Security: max-age=15552000; includeSubDomains; preload
+Content-Type: text/html
+Alt-Svc: h3=":443"; ma=86400
+Access-Control-Allow-Origin: *
+Cache-Control: public, max-age=300
+Referrer-Policy: origin
+Fly-Request-Id: 01KX7VVN2PSJVFR1PQZ74WM2Z6-iad
+X-Content-Type-Options: nosniff
+Location: https://rdap.verisign.com/com/v1/domain/github.com
+X-Fixture-Request-Host: rdap.org
+
