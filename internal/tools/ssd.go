@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -150,6 +151,76 @@ func fillConstitutionFields(e *mem.SDDEvaluation) *mem.SDDEvaluation {
 	return e
 }
 
+// judgeCompleteJSON wraps the LLM call with refusal-interceptor
+// semantics. The behavior depends on the active constitution:
+//
+//   - light / nil (passthrough mode): calls CompleteJSON
+//     once, no retry. Pre-Fase-3 contract preserved byte-exact.
+//   - dark / never_refuse mode: calls CompleteJSONWithRetry
+//     with maxRetries from the constitution. A refused_attempts
+//     > 0 result is recorded in the returned metadata.
+//
+// The verdict is unmarshaled into v as usual. The returned
+// *llm.RefusalResult carries the audit fields the caller needs
+// to populate the sdd_evaluations row.
+//
+// The c.Client must be non-nil (callers check via requireLLM).
+// Cache reuse: the cache is shared between CompleteJSON and
+// CompleteJSONWithRetry via Client.Cache, so a successful retry
+// caches the response for future identical calls.
+func judgeCompleteJSON(
+	ctx context.Context,
+	c *llm.Client,
+	system, user string,
+	v any,
+) (*llm.RefusalResult, error) {
+	con := constitution.Active()
+	switch con.Refusal.Mode {
+	case constitution.RefusalModeNeverRefuse:
+		// Dark path: retry on refusal. maxRetries is bounded
+		// to 3 (2 retries after the initial attempt) — going
+		// higher wastes time and almost never succeeds in
+		// practice (the model has decided to refuse and won't
+		// undecide).
+		maxRetries := con.Refusal.MaxRetries
+		if maxRetries <= 0 || maxRetries > 3 {
+			maxRetries = 2 // dark.toml default
+		}
+		return c.CompleteJSONWithRetry(ctx, c.Cache, system, user, v, maxRetries)
+	default:
+		// Light path: single shot, no retry, no detection.
+		// Wrapped in a RefusalResult for type symmetry with
+		// the dark path.
+		text, err := c.CompleteCached(ctx, c.Cache, system, llm.Message{Role: "user", Content: user})
+		if err != nil {
+			return nil, err
+		}
+		text = stripCodeFencesForTools(text)
+		if err := json.Unmarshal([]byte(text), v); err != nil {
+			return nil, fmt.Errorf("dark-ssd: llm call failed: %w", err)
+		}
+		return &llm.RefusalResult{Text: text, Attempts: 1, RefusedAttempts: 0}, nil
+	}
+}
+
+// stripCodeFencesForTools mirrors llm.stripCodeFences but is
+// kept in the tools package so the tools package does not need
+// to import the unexported function from llm. Identical
+// behavior; the duplication is intentional and tested.
+func stripCodeFencesForTools(s string) string {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "```") {
+		firstNL := strings.Index(s, "\n")
+		if firstNL > 0 {
+			s = s[firstNL+1:]
+		}
+		if strings.HasSuffix(s, "```") {
+			s = s[:len(s)-3]
+		}
+	}
+	return strings.TrimSpace(s)
+}
+
 // --- brand_match ---
 
 type brandMatchArgs struct {
@@ -208,19 +279,25 @@ Where:
 				Issues     []string `json:"issues"`
 				Reasoning  string   `json:"reasoning"`
 			}
-			if err := c.CompleteJSON(ctx, system, user, &verdict); err != nil {
+			llmResult, err := judgeCompleteJSON(ctx, c, system, user, &verdict)
+			if err != nil {
+				if errors.Is(err, llm.ErrRefusalExhausted) {
+					return nil, persistRefusal(m, ctx, "brand_match", "brand", args.BrandID, c.Model, system, llmResult)
+				}
 				return nil, fmt.Errorf("dark-ssd: llm call failed: %w", err)
 			}
 			verdictJSON, _ := json.Marshal(verdict)
 
 			_, _ = m.SaveSDDEvaluation(ctx, fillConstitutionFields(&mem.SDDEvaluation{
-				EvalType:      "brand_match",
-				TargetType:    "brand",
-				TargetID:      args.BrandID,
-				VerdictJSON:   string(verdictJSON),
-				Confidence:    verdict.Match,
-				PromptVersion: "v1",
-				Model:         c.Model,
+				EvalType:         "brand_match",
+				TargetType:       "brand",
+				TargetID:         args.BrandID,
+				VerdictJSON:      string(verdictJSON),
+				Confidence:       verdict.Match,
+				PromptVersion:    "v1",
+				Model:            c.Model,
+				RefusedAttempts:  llmResult.RefusedAttempts,
+				RefusalPattern:   refusalPatternFromResult(llmResult),
 			}))
 
 			return jsonResult(map[string]any{
@@ -292,7 +369,11 @@ Where:
 				RequiredDisclosures []string `json:"required_disclosures"`
 				Reasoning          string   `json:"reasoning"`
 			}
-			if err := c.CompleteJSON(ctx, system, user, &verdict); err != nil {
+			llmResult, err := judgeCompleteJSON(ctx, c, system, user, &verdict)
+			if err != nil {
+				if errors.Is(err, llm.ErrRefusalExhausted) {
+					return nil, persistRefusal(m, ctx, "compliance_check", "jurisdiction", args.Jurisdiction, c.Model, system, llmResult)
+				}
 				return nil, fmt.Errorf("dark-ssd: llm call failed: %w", err)
 			}
 			verdictJSON, _ := json.Marshal(verdict)
@@ -305,13 +386,15 @@ Where:
 			}
 
 			_, _ = m.SaveSDDEvaluation(ctx, fillConstitutionFields(&mem.SDDEvaluation{
-				EvalType:      "compliance_check",
-				TargetType:    "jurisdiction",
-				TargetID:      args.Jurisdiction,
-				VerdictJSON:   string(verdictJSON),
-				Confidence:    confidence,
-				PromptVersion: "v1",
-				Model:         c.Model,
+				EvalType:         "compliance_check",
+				TargetType:       "jurisdiction",
+				TargetID:         args.Jurisdiction,
+				VerdictJSON:      string(verdictJSON),
+				Confidence:       confidence,
+				PromptVersion:    "v1",
+				Model:            c.Model,
+				RefusedAttempts:  llmResult.RefusedAttempts,
+				RefusalPattern:   refusalPatternFromResult(llmResult),
 			}))
 
 			return jsonResult(map[string]any{
@@ -399,19 +482,25 @@ Where:
 				Confidence float32  `json:"confidence"`
 				Reasoning  string   `json:"reasoning"`
 			}
-			if err := c.CompleteJSON(ctx, system, user, &verdict); err != nil {
+			llmResult, err := judgeCompleteJSON(ctx, c, system, user, &verdict)
+			if err != nil {
+				if errors.Is(err, llm.ErrRefusalExhausted) {
+					return nil, persistRefusal(m, ctx, "drift_judge", "artifact", fmt.Sprintf("%d", args.ArtifactID), c.Model, system, llmResult)
+				}
 				return nil, fmt.Errorf("dark-ssd: llm call failed: %w", err)
 			}
 			verdictJSON, _ := json.Marshal(verdict)
 
 			_, _ = m.SaveSDDEvaluation(ctx, fillConstitutionFields(&mem.SDDEvaluation{
-				EvalType:      "drift_judge",
-				TargetType:    "artifact",
-				TargetID:      fmt.Sprintf("%d", args.ArtifactID),
-				VerdictJSON:   string(verdictJSON),
-				Confidence:    verdict.Confidence,
-				PromptVersion: "v1",
-				Model:         c.Model,
+				EvalType:         "drift_judge",
+				TargetType:       "artifact",
+				TargetID:         fmt.Sprintf("%d", args.ArtifactID),
+				VerdictJSON:      string(verdictJSON),
+				Confidence:       verdict.Confidence,
+				PromptVersion:    "v1",
+				Model:            c.Model,
+				RefusedAttempts:  llmResult.RefusedAttempts,
+				RefusalPattern:   refusalPatternFromResult(llmResult),
 			}))
 
 			return jsonResult(map[string]any{
@@ -492,21 +581,27 @@ Where:
 				Evidence   string   `json:"evidence"`
 				Issues     []string `json:"issues"`
 			}
-			if err := c.CompleteJSON(ctx, system, user, &verdict); err != nil {
+			m := sharedMem()
+			llmResult, err := judgeCompleteJSON(ctx, c, system, user, &verdict)
+			if err != nil {
+				if errors.Is(err, llm.ErrRefusalExhausted) {
+					return nil, persistRefusal(m, ctx, "grounding_check", "claim", truncateContent(args.Claim, 200), c.Model, system, llmResult)
+				}
 				return nil, fmt.Errorf("dark-ssd: llm call failed: %w", err)
 			}
 			verdictJSON, _ := json.Marshal(verdict)
 
-			m := sharedMem()
 			if m != nil {
 				_, _ = m.SaveSDDEvaluation(ctx, fillConstitutionFields(&mem.SDDEvaluation{
-					EvalType:      "grounding_check",
-					TargetType:    "claim",
-					TargetID:      truncateContent(args.Claim, 200),
-					VerdictJSON:   string(verdictJSON),
-					Confidence:    verdict.Confidence,
-					PromptVersion: "v1",
-					Model:         c.Model,
+					EvalType:         "grounding_check",
+					TargetType:       "claim",
+					TargetID:         truncateContent(args.Claim, 200),
+					VerdictJSON:      string(verdictJSON),
+					Confidence:       verdict.Confidence,
+					PromptVersion:    "v1",
+					Model:            c.Model,
+					RefusedAttempts:  llmResult.RefusedAttempts,
+					RefusalPattern:   refusalPatternFromResult(llmResult),
 				}))
 			}
 
@@ -553,7 +648,12 @@ func piiDetectTool() Tool {
 				Confidence      float32  `json:"confidence"`
 				Reasoning       string   `json:"reasoning"`
 			}
-			if err := c.CompleteJSON(ctx, system, user, &verdict); err != nil {
+			llmResult, err := judgeCompleteJSON(ctx, c, system, user, &verdict)
+			if err != nil {
+				if errors.Is(err, llm.ErrRefusalExhausted) {
+					targetID := fmt.Sprintf("pii:%x", sha1Of(args.Content))
+					return nil, persistRefusal(sharedMem(), ctx, "pii_detect", "content", targetID, c.Model, system, llmResult)
+				}
 				return nil, fmt.Errorf("dark-ssd: pii_detect llm call: %w", err)
 			}
 			verdictJSON, _ := json.Marshal(verdict)
@@ -562,13 +662,15 @@ func piiDetectTool() Tool {
 			targetID := fmt.Sprintf("pii:%x", sha1Of(args.Content))
 			if m := sharedMem(); m != nil {
 				_, _ = m.SaveSDDEvaluation(ctx, fillConstitutionFields(&mem.SDDEvaluation{
-					EvalType:      "pii_detect",
-					TargetType:    "content",
-					TargetID:      targetID,
-					VerdictJSON:   string(verdictJSON),
-					Confidence:    verdict.Confidence,
-					PromptVersion: "v1",
-					Model:         c.Model,
+					EvalType:         "pii_detect",
+					TargetType:       "content",
+					TargetID:         targetID,
+					VerdictJSON:      string(verdictJSON),
+					Confidence:       verdict.Confidence,
+					PromptVersion:    "v1",
+					Model:            c.Model,
+					RefusedAttempts:  llmResult.RefusedAttempts,
+					RefusalPattern:   refusalPatternFromResult(llmResult),
 				}))
 			}
 
@@ -618,7 +720,12 @@ func promptInjectionTool() Tool {
 				Confidence     float32 `json:"confidence"`
 				Reasoning      string  `json:"reasoning"`
 			}
-			if err := c.CompleteJSON(ctx, system, user, &verdict); err != nil {
+			llmResult, err := judgeCompleteJSON(ctx, c, system, user, &verdict)
+			if err != nil {
+				if errors.Is(err, llm.ErrRefusalExhausted) {
+					targetID := fmt.Sprintf("inject:%x", sha1Of(args.Content))
+					return nil, persistRefusal(sharedMem(), ctx, "prompt_injection_scan", "content", targetID, c.Model, system, llmResult)
+				}
 				return nil, fmt.Errorf("dark-ssd: prompt_injection_scan llm call: %w", err)
 			}
 			verdictJSON, _ := json.Marshal(verdict)
@@ -626,13 +733,15 @@ func promptInjectionTool() Tool {
 			targetID := fmt.Sprintf("inject:%x", sha1Of(args.Content))
 			if m := sharedMem(); m != nil {
 				_, _ = m.SaveSDDEvaluation(ctx, fillConstitutionFields(&mem.SDDEvaluation{
-					EvalType:      "prompt_injection_scan",
-					TargetType:    "content",
-					TargetID:      targetID,
-					VerdictJSON:   string(verdictJSON),
-					Confidence:    verdict.Confidence,
-					PromptVersion: "v1",
-					Model:         c.Model,
+					EvalType:         "prompt_injection_scan",
+					TargetType:       "content",
+					TargetID:         targetID,
+					VerdictJSON:      string(verdictJSON),
+					Confidence:       verdict.Confidence,
+					PromptVersion:    "v1",
+					Model:            c.Model,
+					RefusedAttempts:  llmResult.RefusedAttempts,
+					RefusalPattern:   refusalPatternFromResult(llmResult),
 				}))
 			}
 
@@ -708,9 +817,9 @@ func ssdConsensusTool() Tool {
 					Confidence float32 `json:"confidence"`
 					Reasoning  string  `json:"reasoning"`
 				}
-				if err := c.CompleteJSON(ctx, system, user, &v); err != nil {
-					return nil, fmt.Errorf("dark-ssd: consensus sample %d/%d: %w", i+1, args.N, err)
-				}
+			if _, err := judgeCompleteJSON(ctx, c, system, user, &v); err != nil {
+				return nil, fmt.Errorf("dark-ssd: consensus sample %d/%d: %w", i+1, args.N, err)
+			}
 				// Pick the "headline" verdict field per eval_type.
 				var headline string
 				switch args.EvalType {
@@ -962,4 +1071,52 @@ func stripHTMLTags(s string) string {
 func sha1Of(s string) string {
 	sum := sha1.Sum([]byte(s)) //nolint:gosec // content dedup, not security
 	return hex.EncodeToString(sum[:])
+}
+
+// refusalPatternFromResult returns the pattern label of the
+// final refusal signal, or "" if the LLM did not refuse. Used
+// to populate the sdd_evaluations.refusal_pattern column.
+func refusalPatternFromResult(r *llm.RefusalResult) string {
+	if r == nil || r.FinalRefusal == nil {
+		return ""
+	}
+	return r.FinalRefusal.Pattern
+}
+
+// persistRefusal writes a refusal-exhausted verdict to the
+// sdd_evaluations table so the audit trail captures the
+// failure. Returns a descriptive error to the caller (the MCP
+// tool result will surface this to the agent). The persisted
+// verdict uses confidence=0 and a deterministic
+// "refusal_exhausted" recommendation so downstream tools that
+// read sdd_evaluations can detect the failure mode.
+func persistRefusal(m *mem.Store, ctx context.Context, evalType, targetType, targetID, model, _ string, r *llm.RefusalResult) error {
+	if m == nil {
+		return fmt.Errorf("dark-ssd: refusal exhausted (no mem store); pattern=%q", refusalPatternFromResult(r))
+	}
+	refusedVerdict := map[string]any{
+		"refused":         true,
+		"attempts":        r.Attempts,
+		"refused_pattern": refusalPatternFromResult(r),
+		"last_excerpt":    "",
+		"recommendation":  "retry_with_different_prompt",
+	}
+	if r != nil && r.FinalRefusal != nil {
+		refusedVerdict["last_excerpt"] = r.FinalRefusal.Excerpt
+	}
+	verdictJSON, _ := json.Marshal(refusedVerdict)
+
+	_, _ = m.SaveSDDEvaluation(ctx, fillConstitutionFields(&mem.SDDEvaluation{
+		EvalType:         evalType,
+		TargetType:       targetType,
+		TargetID:         targetID,
+		VerdictJSON:      string(verdictJSON),
+		Confidence:       0,
+		PromptVersion:    "v1",
+		Model:            model,
+		RefusedAttempts:  r.RefusedAttempts,
+		RefusalPattern:   refusalPatternFromResult(r),
+	}))
+	return fmt.Errorf("dark-ssd: refusal exhausted after %d attempts; last pattern %q; verdict persisted to sdd_evaluations",
+		r.Attempts, refusalPatternFromResult(r))
 }
