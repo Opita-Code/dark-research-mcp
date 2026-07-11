@@ -441,6 +441,173 @@ func TestListArtifacts_filters(t *testing.T) {
 	}
 }
 
+// TestUpdateSpec_partial verifies that empty fields are left unchanged
+// while non-empty fields overwrite.
+func TestUpdateSpec_partial(t *testing.T) {
+	s, _ := Open("")
+	defer s.Close()
+	ctx := context.Background()
+
+	id, _ := s.SaveSpec(ctx, &Spec{
+		VibeCase: "C1", SessionID: "alpha",
+		Constitution: `{"r":"original"}`,
+		Spec:         `{"i":"first"}`,
+		Tasks:        `[{"id":1}]`,
+	})
+
+	// Partial update: only Spec field. Everything else stays.
+	err := s.UpdateSpec(ctx, id, &Spec{Spec: `{"i":"second"}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetSpec(ctx, id)
+	if got.Spec != `{"i":"second"}` {
+		t.Errorf("Spec not updated: %s", got.Spec)
+	}
+	if got.Constitution != `{"r":"original"}` {
+		t.Errorf("Constitution should be unchanged: %s", got.Constitution)
+	}
+	if got.VibeCase != "C1" {
+		t.Errorf("VibeCase should be unchanged: %s", got.VibeCase)
+	}
+	if got.UpdatedAt == "" {
+		t.Error("expected updated_at to be bumped")
+	}
+}
+
+// TestUpdateSpec_missing returns sql.ErrNoRows for an absent spec.
+func TestUpdateSpec_missing(t *testing.T) {
+	s, _ := Open("")
+	defer s.Close()
+	err := s.UpdateSpec(context.Background(), 999999, &Spec{Spec: "x"})
+	if err == nil {
+		t.Error("expected error for missing spec")
+	}
+}
+
+// TestDeleteSpec_cascade verifies drift reports referencing this spec
+// have their spec_id set to NULL via ON DELETE SET NULL.
+func TestDeleteSpec_cascade(t *testing.T) {
+	s, _ := Open("")
+	defer s.Close()
+	ctx := context.Background()
+
+	specID, _ := s.SaveSpec(ctx, &Spec{VibeCase: "C1"})
+	artID, _ := s.SaveArtifact(ctx, &Artifact{VibeCase: "C1", ArtifactType: "code", SpecID: specID})
+	_, _ = s.SaveDriftReport(ctx, &DriftReport{ArtifactID: artID, SpecID: specID, Verdict: "aligned"})
+
+	if err := s.DeleteSpec(ctx, specID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Spec gone.
+	if got, _ := s.GetSpec(ctx, specID); got != nil {
+		t.Errorf("expected spec gone, got %+v", got)
+	}
+	// Artifact survives (no FK from artifacts).
+	if got, _ := s.GetArtifact(ctx, artID); got == nil {
+		t.Error("expected artifact to survive spec delete")
+	}
+	// Drift report survives with spec_id=NULL.
+	if got, _ := s.LatestDriftForArtifact(ctx, artID); got == nil || got.SpecID != 0 {
+		t.Errorf("expected drift with spec_id=0, got %+v", got)
+	}
+}
+
+// TestUpdateArtifact_partial verifies the *bool / *int64 fields work as
+// "leave alone" sentinels.
+func TestUpdateArtifact_partial(t *testing.T) {
+	s, _ := Open("")
+	defer s.Close()
+	ctx := context.Background()
+
+	id, _ := s.SaveArtifact(ctx, &Artifact{
+		VibeCase: "C4", ArtifactType: "video",
+		BrandID: "acme", Jurisdiction: "EU", HasDisclosure: true,
+	})
+
+	// Update only artifact_url; everything else stays.
+	newURL := "https://example.com/v2.mp4"
+	if err := s.UpdateArtifact(ctx, id, &ArtifactUpdate{ArtifactURL: &newURL}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetArtifact(ctx, id)
+	if got.ArtifactURL != newURL {
+		t.Errorf("URL not updated: %s", got.ArtifactURL)
+	}
+	if got.BrandID != "acme" || got.Jurisdiction != "EU" || !got.HasDisclosure {
+		t.Errorf("other fields changed: %+v", got)
+	}
+
+	// Now flip has_disclosure to false (the whole point of *bool).
+	off := false
+	if err := s.UpdateArtifact(ctx, id, &ArtifactUpdate{HasDisclosure: &off}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.GetArtifact(ctx, id)
+	if got.HasDisclosure {
+		t.Error("expected has_disclosure to be false now")
+	}
+}
+
+// TestDeleteArtifact_cascade verifies drift reports are removed.
+func TestDeleteArtifact_cascade(t *testing.T) {
+	s, _ := Open("")
+	defer s.Close()
+	ctx := context.Background()
+
+	artID, _ := s.SaveArtifact(ctx, &Artifact{VibeCase: "C1", ArtifactType: "code"})
+	_, _ = s.SaveDriftReport(ctx, &DriftReport{ArtifactID: artID, Verdict: "aligned"})
+
+	if err := s.DeleteArtifact(ctx, artID); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, _ := s.GetArtifact(ctx, artID); got != nil {
+		t.Errorf("expected artifact gone, got %+v", got)
+	}
+	// Drift gone too (ON DELETE CASCADE).
+	if got, _ := s.LatestDriftForArtifact(ctx, artID); got != nil {
+		t.Errorf("expected drift gone, got %+v", got)
+	}
+}
+
+// TestDeleteBrandGuide_idempotent verifies removing an absent brand is
+// not an error (unlike DeleteSpec / DeleteArtifact which return
+// sql.ErrNoRows).
+func TestDeleteBrandGuide_idempotent(t *testing.T) {
+	s, _ := Open("")
+	defer s.Close()
+
+	// Present: returns nil, row gone.
+	if err := s.SaveBrandGuide(context.Background(), &BrandGuide{BrandID: "temp"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteBrandGuide(context.Background(), "temp"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GetBrandGuide(context.Background(), "temp"); got != nil {
+		t.Error("expected brand gone")
+	}
+
+	// Absent: still nil (idempotent).
+	if err := s.DeleteBrandGuide(context.Background(), "never-existed"); err != nil {
+		t.Errorf("absent delete should be idempotent: %v", err)
+	}
+}
+
+// TestDeleteBrandGuide_rejects_badName verifies the validateName guard.
+func TestDeleteBrandGuide_rejects_badName(t *testing.T) {
+	s, _ := Open("")
+	defer s.Close()
+
+	for _, bad := range []string{"", "  ", "a/b", "a\\b"} {
+		if err := s.DeleteBrandGuide(context.Background(), bad); err == nil {
+			t.Errorf("expected error for bad name %q", bad)
+		}
+	}
+}
+
 // TestListDriftReports_filter verifies artifact_id and verdict filters.
 func TestListDriftReports_filter(t *testing.T) {
 	s, _ := Open("")

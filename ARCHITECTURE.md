@@ -80,14 +80,14 @@ cross-table joins are possible via direct SQL when needed.
 `VibeCase` and the SQL column is `vibe_case` because `case` is a
 reserved word in SQL.
 
-## 44 MCP tools
+## 53 MCP tools
 
 | Family | Count | Tools |
 |---|---|---|
 | OSINT | 15 | `dark_research` (router), `dark_research_<13 intents>`, `dark_research_multi` |
-| memory | 5 | `dark_mem_recall_research`, `dark_mem_status`, `dark_mem_schema_status`, `dark_mem_link_research`, `dark_mem_list_runs`, `dark_mem_list_items` |
-| vibe-flow CRUD | 15 | 5 tables × {create, get, list} (spec, brand, compliance, artifact, drift) |
-| dark-ssd | 5 | `dark_ssd_brand_match`, `dark_ssd_compliance_check`, `dark_ssd_drift_judge`, `dark_ssd_grounding_check`, `dark_ssd_list_evaluations` |
+| memory | 6 | `dark_mem_recall_research`, `dark_mem_status`, `dark_mem_schema_status`, `dark_mem_link_research`, `dark_mem_list_runs`, `dark_mem_list_items` |
+| vibe-flow CRUD | 22 | 5 tables × {create, get, list, update, delete, **render (spec)**} |
+| dark-ssd | 7 | `dark_ssd_brand_match`, `dark_ssd_compliance_check`, `dark_ssd_drift_judge`, `dark_ssd_grounding_check`, `dark_ssd_pii_detect`, `dark_ssd_prompt_injection_scan`, `dark_ssd_list_evaluations` |
 | standalone | 4 | `web_search`, `web_fetch`, `url_extract_components`, `text_anonymize` |
 
 JSON contract: every tool emits snake_case. Go types have explicit

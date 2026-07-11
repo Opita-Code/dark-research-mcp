@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // ---------------------------------------------------------------------------
@@ -283,6 +284,144 @@ func (s *Store) SaveDriftReport(ctx context.Context, d *DriftReport) (int64, err
 	}
 
 	return id, nil
+}
+
+// UpdateSpec mutates an existing spec by ID. Any non-empty field is
+// updated; empty fields are left unchanged. updated_at is bumped to now.
+//
+// Returns ErrNotFound (sql.ErrNoRows from Exec) if no row matches id.
+func (s *Store) UpdateSpec(ctx context.Context, id int64, sp *Spec) error {
+	if id == 0 {
+		return fmt.Errorf("mem: spec id required")
+	}
+	if sp == nil {
+		return fmt.Errorf("mem: nil spec")
+	}
+	sp.UpdatedAt = Now()
+	res, err := s.Exec(ctx,
+		`UPDATE vibe_specs SET
+		   vibe_case = COALESCE(NULLIF(?, ''), vibe_case),
+		   session_id = COALESCE(NULLIF(?, ''), session_id),
+		   constitution_json = COALESCE(NULLIF(?, ''), constitution_json),
+		   spec_json = COALESCE(NULLIF(?, ''), spec_json),
+		   tasks_json = COALESCE(NULLIF(?, ''), tasks_json),
+		   updated_at = ?
+		 WHERE id = ?`,
+		sp.VibeCase, sp.SessionID, sp.Constitution, sp.Spec, sp.Tasks, sp.UpdatedAt, id,
+	)
+	if err != nil {
+		return fmt.Errorf("mem: update spec: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// DeleteSpec removes a spec by ID. Drift reports that reference this
+// spec have their spec_id set to NULL (ON DELETE SET NULL).
+func (s *Store) DeleteSpec(ctx context.Context, id int64) error {
+	res, err := s.Exec(ctx, `DELETE FROM vibe_specs WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("mem: delete spec: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// ArtifactUpdate is a partial update for an artifact. Nil pointer = leave
+// unchanged; non-nil pointer = set to that value. This lets the caller
+// distinguish "leave alone" from "set to false" or "set to 0", which a
+// plain Artifact struct cannot do.
+type ArtifactUpdate struct {
+	SessionID        *string
+	SpecID           *int64
+	ArtifactURL      *string
+	BrandID          *string
+	Jurisdiction     *string
+	HasDisclosure    *bool
+	ValidationStatus *string
+}
+
+// UpdateArtifact mutates an existing artifact by ID. Each field is
+// optional; nil pointer means "leave unchanged". Useful to fix a typo'd
+// URL, attach a missing jurisdiction, or mark has_disclosure=true after
+// the fact.
+func (s *Store) UpdateArtifact(ctx context.Context, id int64, u *ArtifactUpdate) error {
+	if id == 0 {
+		return fmt.Errorf("mem: artifact id required")
+	}
+	if u == nil {
+		return fmt.Errorf("mem: nil update")
+	}
+	res, err := s.Exec(ctx,
+		`UPDATE vibe_artifacts SET
+		   session_id = COALESCE(?, session_id),
+		   spec_id = COALESCE(?, spec_id),
+		   artifact_url = COALESCE(?, artifact_url),
+		   brand_id = COALESCE(?, brand_id),
+		   jurisdiction = COALESCE(?, jurisdiction),
+		   has_disclosure = COALESCE(?, has_disclosure),
+		   validation_status = COALESCE(?, validation_status)
+		 WHERE id = ?`,
+		u.SessionID, u.SpecID, u.ArtifactURL, u.BrandID, u.Jurisdiction,
+		u.HasDisclosure, u.ValidationStatus, id,
+	)
+	if err != nil {
+		return fmt.Errorf("mem: update artifact: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// DeleteArtifact removes an artifact by ID. Drift reports referencing
+// this artifact are removed via ON DELETE CASCADE.
+func (s *Store) DeleteArtifact(ctx context.Context, id int64) error {
+	res, err := s.Exec(ctx, `DELETE FROM vibe_artifacts WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("mem: delete artifact: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// DeleteBrandGuide removes a brand guide by id. Idempotent: removing an
+// absent brand returns nil (vs DeleteSpec/DeleteArtifact which return
+// sql.ErrNoRows). This is intentional — brand guides are reference data
+// the agent registers up-front; "ensure absent" is a common operation.
+func (s *Store) DeleteBrandGuide(ctx context.Context, brandID string) error {
+	if err := validateName(brandID); err != nil {
+		return err
+	}
+	_, err := s.Exec(ctx, `DELETE FROM vibe_brands WHERE brand_id = ?`, brandID)
+	if err != nil {
+		return fmt.Errorf("mem: delete brand_guide: %w", err)
+	}
+	return nil
+}
+
+// validateName rejects names that would break our brand_id / jurisdiction
+// primary keys (no slashes, no null bytes, no whitespace). Used by both
+// SaveBrandGuide and DeleteBrandGuide.
+func validateName(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("mem: name is empty")
+	}
+	if strings.ContainsAny(name, "/\\\x00\n\r") {
+		return fmt.Errorf("mem: name contains invalid characters")
+	}
+	return nil
 }
 
 // LatestDriftForArtifact returns the most recent drift report for an

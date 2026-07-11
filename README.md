@@ -19,8 +19,8 @@
 
 [![MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go 1.22+](https://img.shields.io/badge/Go-1.22%2B-00ADD8?logo=go&logoColor=white)](go.mod)
-[![MCP tools](https://img.shields.io/badge/MCP-45%20tools-blueviolet)](ARCHITECTURE.md)
-[![Tests](https://img.shields.io/badge/tests-72%20passing-brightgreen)](.github/workflows/go-test.yml)
+[![MCP tools](https://img.shields.io/badge/MCP-53%20tools-blueviolet)](ARCHITECTURE.md)
+[![Tests](https://img.shields.io/badge/tests-80%20passing-brightgreen)](.github/workflows/go-test.yml)
 [![CI](https://github.com/Opita-Code/dark-research-mcp/workflows/Go%20test/badge.svg)](.github/workflows/go-test.yml)
 
 [¿Qué hace?](#qué-hace) · [¿Para quién?](#para-quién) · [Quickstart](#quickstart) · [Arquitectura](#arquitectura) · [Papers](#papers-y-mentalidad)
@@ -31,11 +31,11 @@
 
 ## ¿Qué hace?
 
-**dark-research-mcp** es un servidor MCP escrito en Go que entrega a tu agente IA **45 herramientas especializadas** agrupadas en tres oficios:
+**dark-research-mcp** es un servidor MCP escrito en Go que entrega a tu agente IA **53 herramientas especializadas** agrupadas en tres oficios:
 
 1. **🔍 Investigación (OSINT)** — 15 herramientas que enrutan consultas a backends nicho (OSV.dev, OpenAlex, RIPE, crt.sh, abuse.ch, DuckDuckGo, GDELT, Wayback, Ahmia, HIBP, ip-api, GitHub, crates.io, npm) con fallback automático.
-2. **🌊 Vibe-flow** — 15 herramientas para gestionar el ciclo completo de producción asistida por IA: spec → tarea → generar → auditar → reconciliar drift → publicar.
-3. **⚖️ Dark-ssd (LLM-as-judge)** — 5 jueces LLM que validan brand fit, compliance jurisdiccional, drift spec-vs-artifact, y grounding de claims OSINT.
+2. **🌊 Vibe-flow** — 22 herramientas para gestionar el ciclo completo de producción asistida por IA: spec (create/update/delete/render) → artifact (log/update/delete) → drift → reconcile → publish, con brand y compliance como reference data.
+3. **⚖️ Dark-ssd (LLM-as-judge)** — 7 jueces LLM: brand fit, compliance jurisdiccional, drift spec-vs-artifact, grounding de claims OSINT, **PII detection (GDPR/CCPA)** y **prompt-injection scan** (security gate antes de pasar texto no confiable al agente).
 
 Una sola base SQLite (`dark.db`) compartida con `dark-eval`. Una sola API. Un solo binario (~17 MB). **Sin magia: con código que puedes leer y modificar.**
 
@@ -48,10 +48,10 @@ Una sola base SQLite (`dark.db`) compartida con `dark-eval`. Una sola API. Un so
 | Si eres… | Te interesa porque… |
 |---|---|
 | 🔬 **Investigador** | Persiste runs OSINT, recuerda hallazgos, evita re-fetching. Cross-link entre items y CVEs/ataques/papers. |
-| ✍️ **Prompt engineer** | El LLM-as-judge te da un panel reproducible: brand_match, compliance_check, grounding_check — cada uno con verdict + confidence + reasoning persistido. |
+| ✍️ **Prompt engineer** | El LLM-as-judge te da un panel reproducible: brand_match, compliance_check, grounding_check, **pii_detect**, **prompt_injection_scan** — cada uno con verdict + confidence + reasoning persistido. |
 | 🌊 **Vibe-coder** | El pipeline `spec → artifact → drift → reconcile` cierra el loop. Para de regenerar el mismo bug cada vez. |
 | 🛡️ **Red-teamer** | Mismo `dark.db` que `dark-eval`. Cruza findings de evaluación con research OSINT y audit trail de prompts. |
-| 🏛️ **Compliance officer** | `dark_ssd_compliance_check` aplica el EU AI Act 2026-08-02, FTC, US-CA SB-1001. Cada verdict se audita. |
+| 🏛️ **Compliance officer** | `dark_ssd_compliance_check` aplica el EU AI Act 2026-08-02, FTC, US-CA SB-1001. `dark_ssd_pii_detect` escanea GDPR Art. 4 / CCPA antes de publicar. Cada verdict se audita. |
 
 ---
 
@@ -167,7 +167,7 @@ Cada LLM-as-judge persiste su verdict en `sdd_evaluations` con `prompt_version` 
         │   dark-research-mcp.exe            │
         │                                    │
         │   ┌──────────────────────────┐     │
-        │   │  45 MCP tools            │     │
+        │   │  53 MCP tools            │     │
         │   │  ├ OSINT (15)            │     │
         │   │  ├ memory (6)            │     │
         │   │  ├ vibe-flow CRUD (15)   │     │
@@ -258,6 +258,7 @@ internal/vault     5 tests   (cross-platform interface)
 
 ## Status
 
+- ✅ **v0.2.0** — CRUD completion (update/delete on 5 tables), spec_render, pii_detect + prompt_injection_scan (security gates), 53 tools total
 - ✅ **v0.1.0** — initial open-source release (45 tools, 72 tests, CI, MIT)
 - 🚧 Add `go-keyring` impl for Linux/macOS vault
 - 🚧 Spec diff library (structured change detection)

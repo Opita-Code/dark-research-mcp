@@ -2,8 +2,10 @@ package tools
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/dark-agents/research-mcp/internal/mem"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -327,6 +329,122 @@ func artifactGetTool() Tool {
 	}
 }
 
+// artifactUpdateArgs uses *bool / *int64 sentinels via the MCP layer's
+// JSON pointer convention: only present keys are updated.
+type artifactUpdateArgs struct {
+	ArtifactID      int64   `json:"artifact_id" jsonschema:"Artifact id from dark_research_artifact_log"`
+	SessionID       *string `json:"session_id,omitempty" jsonschema:"New session id. Omit to leave unchanged."`
+	SpecID          *int64  `json:"spec_id,omitempty" jsonschema:"New spec id (or 0 to unlink). Omit to leave unchanged."`
+	ArtifactURL     *string `json:"artifact_url,omitempty" jsonschema:"New artifact URL. Omit to leave unchanged."`
+	BrandID         *string `json:"brand_id,omitempty" jsonschema:"New brand id. Omit to leave unchanged."`
+	Jurisdiction    *string `json:"jurisdiction,omitempty" jsonschema:"New jurisdiction (e.g. 'EU'). Omit to leave unchanged."`
+	HasDisclosure   *bool   `json:"has_disclosure,omitempty" jsonschema:"New has_disclosure value. CRITICAL for EU AI Act compliance: explicitly set true after publishing a C4 video."`
+	ValidationStatus *string `json:"validation_status,omitempty" jsonschema:"New status (pending|passed|failed|drift_detected). Omit to leave unchanged."`
+}
+
+func artifactUpdateTool() Tool {
+	def := mcp.NewTool("dark_research_artifact_update",
+		mcp.WithDescription("Partial update of an artifact by id. Only fields you pass are updated; missing fields are left unchanged. Use to fix a typo'd URL, attach a missing jurisdiction, flip has_disclosure after publication, or update validation_status after a manual review."),
+		mcp.WithNumber("artifact_id", mcp.Required(), mcp.Description("Artifact id")),
+		mcp.WithString("session_id", mcp.Description("New session id")),
+		mcp.WithNumber("spec_id", mcp.Description("New spec id (0 = unlink)")),
+		mcp.WithString("artifact_url", mcp.Description("New artifact URL")),
+		mcp.WithString("brand_id", mcp.Description("New brand id")),
+		mcp.WithString("jurisdiction", mcp.Description("New jurisdiction")),
+		mcp.WithBoolean("has_disclosure", mcp.Description("New has_disclosure value")),
+		mcp.WithString("validation_status", mcp.Description("New validation status")),
+	)
+	return Tool{
+		Definition: def,
+		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			var args artifactUpdateArgs
+			if err := bindArgs(req, &args); err != nil {
+				return nil, err
+			}
+			m := sharedMem()
+			if m == nil {
+				return nil, fmt.Errorf("mem store not configured")
+			}
+			err := m.UpdateArtifact(ctx, args.ArtifactID, &mem.ArtifactUpdate{
+				SessionID:        args.SessionID,
+				SpecID:           args.SpecID,
+				ArtifactURL:      args.ArtifactURL,
+				BrandID:          args.BrandID,
+				Jurisdiction:     args.Jurisdiction,
+				HasDisclosure:    args.HasDisclosure,
+				ValidationStatus: args.ValidationStatus,
+			})
+			if err == sql.ErrNoRows {
+				return jsonResult(map[string]any{"updated": false, "reason": "artifact not found"}), nil
+			}
+			if err != nil {
+				return nil, err
+			}
+			return jsonResult(map[string]any{"artifact_id": args.ArtifactID, "updated": true}), nil
+		},
+	}
+}
+
+type artifactDeleteArgs struct {
+	ArtifactID int64 `json:"artifact_id" jsonschema:"Artifact id to delete"`
+}
+
+func artifactDeleteTool() Tool {
+	def := mcp.NewTool("dark_research_artifact_delete",
+		mcp.WithDescription("Permanently delete an artifact by id. Drift reports referencing this artifact are removed via ON DELETE CASCADE. Use to clean up failed experiments or replace an artifact."),
+		mcp.WithNumber("artifact_id", mcp.Required(), mcp.Description("Artifact id to delete")),
+	)
+	return Tool{
+		Definition: def,
+		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			var args artifactDeleteArgs
+			if err := bindArgs(req, &args); err != nil {
+				return nil, err
+			}
+			m := sharedMem()
+			if m == nil {
+				return nil, fmt.Errorf("mem store not configured")
+			}
+			err := m.DeleteArtifact(ctx, args.ArtifactID)
+			if err == sql.ErrNoRows {
+				return jsonResult(map[string]any{"deleted": false, "reason": "artifact not found"}), nil
+			}
+			if err != nil {
+				return nil, err
+			}
+			return jsonResult(map[string]any{"artifact_id": args.ArtifactID, "deleted": true}), nil
+		},
+	}
+}
+
+type brandDeleteArgs struct {
+	BrandID string `json:"brand_id" jsonschema:"Brand id to remove (e.g. 'acme-2026')"`
+}
+
+func brandDeleteTool() Tool {
+	def := mcp.NewTool("dark_research_brand_delete",
+		mcp.WithDescription("Remove a brand guide by id. Idempotent: deleting an absent brand returns success. Use to clean up old test brands or reset a corrupted registration."),
+		mcp.WithString("brand_id", mcp.Required(), mcp.Description("Brand id to remove")),
+	)
+	return Tool{
+		Definition: def,
+		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			var args brandDeleteArgs
+			if err := bindArgs(req, &args); err != nil {
+				return nil, err
+			}
+			m := sharedMem()
+			if m == nil {
+				return nil, fmt.Errorf("mem store not configured")
+			}
+			if err := m.DeleteBrandGuide(ctx, args.BrandID); err != nil {
+				return nil, err
+			}
+			return jsonResult(map[string]any{"brand_id": args.BrandID, "deleted": true}), nil
+		},
+	}
+}
+
 // --- drift reports ---
 
 type driftLogArgs struct {
@@ -411,6 +529,123 @@ func driftGetTool() Tool {
 var _ = json.Marshal
 
 // --- list endpoints (newest-first, optional filters) ---
+
+type specUpdateArgs struct {
+	SpecID       int64  `json:"spec_id" jsonschema:"Spec id returned by dark_research_spec_create"`
+	VibeCase     string `json:"vibe_case,omitempty" jsonschema:"New case (C1..C7). Empty = unchanged."`
+	SessionID    string `json:"session_id,omitempty" jsonschema:"New session id. Empty = unchanged."`
+	Constitution string `json:"constitution,omitempty" jsonschema:"New constitution JSON. Empty = unchanged."`
+	Spec         string `json:"spec,omitempty" jsonschema:"New spec JSON. Empty = unchanged."`
+	Tasks        string `json:"tasks,omitempty" jsonschema:"New tasks JSON. Empty = unchanged."`
+}
+
+func specUpdateTool() Tool {
+	def := mcp.NewTool("dark_research_spec_update",
+		mcp.WithDescription("Partial update of a spec by id. Any field left empty is left unchanged. updated_at is bumped automatically. Use to fix typos, refine the constitution, or extend the tasks list without re-creating the spec (which would invalidate artifact linkage)."),
+		mcp.WithNumber("spec_id", mcp.Required(), mcp.Description("Spec id")),
+		mcp.WithString("vibe_case", mcp.Description("New case (C1..C7)")),
+		mcp.WithString("session_id", mcp.Description("New session id")),
+		mcp.WithString("constitution", mcp.Description("New constitution JSON")),
+		mcp.WithString("spec", mcp.Description("New spec JSON")),
+		mcp.WithString("tasks", mcp.Description("New tasks JSON")),
+	)
+	return Tool{
+		Definition: def,
+		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			var args specUpdateArgs
+			if err := bindArgs(req, &args); err != nil {
+				return nil, err
+			}
+			m := sharedMem()
+			if m == nil {
+				return nil, fmt.Errorf("mem store not configured")
+			}
+			err := m.UpdateSpec(ctx, args.SpecID, &mem.Spec{
+				VibeCase:     args.VibeCase,
+				SessionID:    args.SessionID,
+				Constitution: args.Constitution,
+				Spec:         args.Spec,
+				Tasks:        args.Tasks,
+			})
+			if err == sql.ErrNoRows {
+				return jsonResult(map[string]any{"updated": false, "reason": "spec not found"}), nil
+			}
+			if err != nil {
+				return nil, err
+			}
+			return jsonResult(map[string]any{"spec_id": args.SpecID, "updated": true}), nil
+		},
+	}
+}
+
+type specDeleteArgs struct {
+	SpecID int64 `json:"spec_id" jsonschema:"Spec id to delete"`
+}
+
+func specDeleteTool() Tool {
+	def := mcp.NewTool("dark_research_spec_delete",
+		mcp.WithDescription("Permanently delete a spec by id. Drift reports referencing this spec have their spec_id set to NULL (the spec_diff stays). Artifacts referencing this spec are NOT deleted (their spec_id becomes stale; use artifact_update to re-link or artifact_delete to remove)."),
+		mcp.WithNumber("spec_id", mcp.Required(), mcp.Description("Spec id to delete")),
+	)
+	return Tool{
+		Definition: def,
+		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			var args specDeleteArgs
+			if err := bindArgs(req, &args); err != nil {
+				return nil, err
+			}
+			m := sharedMem()
+			if m == nil {
+				return nil, fmt.Errorf("mem store not configured")
+			}
+			err := m.DeleteSpec(ctx, args.SpecID)
+			if err == sql.ErrNoRows {
+				return jsonResult(map[string]any{"deleted": false, "reason": "spec not found"}), nil
+			}
+			if err != nil {
+				return nil, err
+			}
+			return jsonResult(map[string]any{"spec_id": args.SpecID, "deleted": true}), nil
+		},
+	}
+}
+
+type specRenderArgs struct {
+	SpecID int64 `json:"spec_id" jsonschema:"Spec id returned by dark_research_spec_create"`
+}
+
+func specRenderTool() Tool {
+	def := mcp.NewTool("dark_research_spec_render",
+		mcp.WithDescription("Render a spec as a human-readable markdown document. Useful for handoff to humans, code review, archival, and debugging the drift loop. Returns the markdown body (not the raw JSON)."),
+		mcp.WithNumber("spec_id", mcp.Required(), mcp.Description("Spec id")),
+	)
+	return Tool{
+		Definition: def,
+		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			var args specRenderArgs
+			if err := bindArgs(req, &args); err != nil {
+				return nil, err
+			}
+			m := sharedMem()
+			if m == nil {
+				return nil, fmt.Errorf("mem store not configured")
+			}
+			sp, err := m.GetSpec(ctx, args.SpecID)
+			if err != nil {
+				return nil, err
+			}
+			if sp == nil {
+				return jsonResult(map[string]any{"found": false}), nil
+			}
+			md := renderSpecMarkdown(sp)
+			return jsonResult(map[string]any{
+				"spec_id":  sp.ID,
+				"vibe_case": sp.VibeCase,
+				"markdown": md,
+			}), nil
+		},
+	}
+}
 
 type specListArgs struct {
 	VibeCase  string `json:"vibe_case,omitempty" jsonschema:"Optional: only specs for this case (C1..C7)"`
@@ -588,4 +823,74 @@ func driftListTool() Tool {
 			}), nil
 		},
 	}
+}
+
+// ---------------------------------------------------------------------------
+// renderSpecMarkdown converts a Spec struct into a human-readable markdown
+// document. JSON fields are pretty-printed; tasks render as a checklist.
+// Used by dark_research_spec_render.
+// ---------------------------------------------------------------------------
+
+func renderSpecMarkdown(sp *mem.Spec) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# Spec #%d — `%s`\n\n", sp.ID, sp.VibeCase)
+	if sp.SessionID != "" {
+		fmt.Fprintf(&b, "**Session:** `%s`  \n", sp.SessionID)
+	}
+	fmt.Fprintf(&b, "**Created:** %s  \n", sp.CreatedAt)
+	if sp.UpdatedAt != "" {
+		fmt.Fprintf(&b, "**Updated:** %s  \n", sp.UpdatedAt)
+	}
+	b.WriteString("\n")
+
+	if sp.Constitution != "" {
+		b.WriteString("## Constitution (hard rules)\n\n")
+		b.WriteString(prettyJSON(sp.Constitution))
+		b.WriteString("\n\n")
+	}
+	if sp.Spec != "" {
+		b.WriteString("## Intent (what + why)\n\n")
+		b.WriteString(prettyJSON(sp.Spec))
+		b.WriteString("\n\n")
+	}
+	if sp.Tasks != "" {
+		b.WriteString("## Tasks\n\n")
+		// Try to render as checklist if the JSON is an array of
+		// {id, description, depends_on} objects.
+		var tasks []map[string]any
+		if err := json.Unmarshal([]byte(sp.Tasks), &tasks); err == nil && len(tasks) > 0 {
+			for _, t := range tasks {
+				id, _ := t["id"].(float64)
+				desc, _ := t["description"].(string)
+				deps, _ := t["depends_on"].([]any)
+				fmt.Fprintf(&b, "- [ ] **#%.0f** %s", id, desc)
+				if len(deps) > 0 {
+					fmt.Fprintf(&b, "  _depends on: %v_", deps)
+				}
+				b.WriteString("\n")
+			}
+		} else {
+			// Fallback: pretty-print raw JSON
+			b.WriteString("```json\n")
+			b.WriteString(prettyJSON(sp.Tasks))
+			b.WriteString("\n```\n")
+		}
+	}
+
+	b.WriteString("\n---\n_Generated by `dark_research_spec_render` from `dark-research-mcp`._\n")
+	return b.String()
+}
+
+// prettyJSON reformats a JSON string with 2-space indent. If the input
+// isn't valid JSON, returns it verbatim.
+func prettyJSON(s string) string {
+	var v any
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		return s
+	}
+	out, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return s
+	}
+	return string(out)
 }
