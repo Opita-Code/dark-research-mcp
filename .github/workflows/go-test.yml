@@ -16,13 +16,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: ["1.22", "1.23"]
+        go-version: ["1.23", "1.24"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go-version }}
           cache: true
@@ -40,19 +40,7 @@ jobs:
         run: |
           go test -count=1 -coverprofile=coverage.out -timeout 120s ./...
           go tool cover -func=coverage.out | tail -20
-        if: matrix.go-version == '1.23'
-        # TODO: re-enable once the go1.26.0 toolchain bug is resolved.
-        # When setup-go@v5 with go-version 1.22/1.23 is asked to honor a
-        # `go 1.26` directive in go.mod, it auto-downloads the go1.26.0
-        # toolchain (GOTOOLCHAIN=auto). That RC build is missing the
-        # `covdata` tool that the coverprofile workflow needs, so this
-        # step fails with `go: no such tool "covdata"`. Native Go
-        # 1.26.5 (and likely 1.24/1.25 final) work correctly. Two paths:
-        #   (a) bump go.mod to `go 1.24` once we're ready to drop 1.22,
-        #   (b) wait for the toolchain release to catch up.
-        # Until then: do not fail the job on coverage. Coverage is
-        # still useful as a metric on local dev and on releases.
-        continue-on-error: true
+        if: matrix.go-version == '1.24'
 
   # OSINT backends are network-dependent. We don't fail CI on transient
   # outages, but we want a record of which ones regressed.
@@ -63,9 +51,9 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
-          go-version: "1.23"
+          go-version: "1.24"
           cache: true
       - name: Build binary
         run: go build -o ./bin/dark-research-mcp ./cmd/dark-research-mcp
