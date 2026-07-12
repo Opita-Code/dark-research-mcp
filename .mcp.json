@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "dark-research": {
+      "command": "C:\\Users\\Nico\\Documents\\dark-research-mcp\\dark-research-mcp.exe",
+      "lifecycle": "lazy",
+      "idleTimeout": 30,
+      "env": {
+        "SDD_LLM_BASE_URL": "https://api.minimax.io/anthropic",
+        "SDD_LLM_MODEL": "MiniMax-M3"
+      }
+    }
+  }
+}
