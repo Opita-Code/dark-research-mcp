@@ -24,7 +24,7 @@ import (
 // --- specs ---
 
 type specCreateArgs struct {
-	VibeCase     string `json:"vibe_case" jsonschema:"Vibe-flow case: C1 (code), C2 (text), C3 (image), C4 (video), C5 (audio), C6 (multi-modal), C7 (mixed)"`
+	VibeCase     string `json:"case_kind" jsonschema:"Vibe-flow case: C1 (code), C2 (text), C3 (image), C4 (video), C5 (audio), C6 (multi-modal), C7 (mixed)"`
 	SessionID    string `json:"session_id,omitempty" jsonschema:"Optional session id"`
 	Constitution string `json:"constitution,omitempty" jsonschema:"JSON: hard rules, brand voice, legal constraints"`
 	Spec         string `json:"spec,omitempty" jsonschema:"JSON: declarative intent (what + why)"`
@@ -250,7 +250,7 @@ func complianceGetTool() Tool {
 // --- artifacts ---
 
 type artifactLogArgs struct {
-	VibeCase     string `json:"vibe_case" jsonschema:"Vibe-flow case: C1..C7"`
+	VibeCase     string `json:"case_kind" jsonschema:"Vibe-flow case: C1..C7"`
 	ArtifactType string `json:"artifact_type" jsonschema:"code|text|image|video|audio|multi"`
 	ArtifactURL  string `json:"artifact_url,omitempty" jsonschema:"URL where artifact is hosted (repo, doc, image, video, etc)"`
 	SpecID       int64  `json:"spec_id,omitempty" jsonschema:"Optional spec id for provenance linkage"`
