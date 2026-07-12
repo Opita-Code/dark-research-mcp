@@ -109,7 +109,7 @@ El problema #1 sin resolver en 2026 AI-assisted development es el **spec-drift**
                     │     dark_research_compliance_register(…) │
                     │     (EU AI Act 2026-08-02: $51,744/viol) │
                     │                                          │
-                    │  3. Crear spec                          │
+                    │  3. Crear spec                           │
                     │     dark_research_spec_create(…)         │
                     │                                          │
                     │  4. Generar el artifact                  │
