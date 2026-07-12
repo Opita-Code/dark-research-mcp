@@ -103,29 +103,11 @@ func TestCompleteJSON_invalidJSON(t *testing.T) {
 	}
 }
 
-func TestNewFromEnv_returnsLocalModelWithoutKey(t *testing.T) {
+func TestNewFromEnv_returnsNilWithoutKey(t *testing.T) {
 	t.Setenv("SDD_LLM_API_KEY", "")
 	t.Setenv("MINIMAX_API_KEY", "")
-	t.Setenv("ANTHROPIC_API_KEY", "")
-	t.Setenv("OPENAI_API_KEY", "")
-	t.Setenv("SDD_LLM_BASE_URL", "")
-	t.Setenv("SDD_LLM_MODEL", "")
-	t.Setenv("SDD_LLM_PROVIDER", "")
-	c := NewFromEnv()
-	if c == nil {
-		t.Fatal("expected local-model client, got nil")
-	}
-	if c.Provider != "openai" {
-		t.Errorf("expected openai provider for local fallback, got %s", c.Provider)
-	}
-	if c.APIKey != "" {
-		t.Errorf("expected empty key for local model, got %q", c.APIKey)
-	}
-	if c.BaseURL != "http://127.0.0.1:8088" {
-		t.Errorf("expected localhost base URL, got %s", c.BaseURL)
-	}
-	if c.Model != "Qwen3.5-9B" {
-		t.Errorf("expected Qwen3.5-9B default model, got %s", c.Model)
+	if c := NewFromEnv(); c != nil {
+		t.Errorf("expected nil, got %+v", c)
 	}
 }
 
@@ -152,53 +134,10 @@ func TestNewFromEnv_usesKey(t *testing.T) {
 func TestNewFromEnv_fallsBackToMinimax(t *testing.T) {
 	t.Setenv("SDD_LLM_API_KEY", "")
 	t.Setenv("MINIMAX_API_KEY", "from-minimax")
-	t.Setenv("ANTHROPIC_API_KEY", "")
-	t.Setenv("OPENAI_API_KEY", "")
 	t.Setenv("SDD_LLM_BASE_URL", "")
 	t.Setenv("SDD_LLM_MODEL", "")
 	c := NewFromEnv()
 	if c == nil || c.APIKey != "from-minimax" {
 		t.Errorf("expected fallback to minimax, got %+v", c)
-	}
-	if c.Provider != "anthropic" {
-		t.Errorf("expected anthropic provider, got %s", c.Provider)
-	}
-}
-
-func TestNewFromEnv_fallsBackToAnthropic(t *testing.T) {
-	t.Setenv("SDD_LLM_API_KEY", "")
-	t.Setenv("MINIMAX_API_KEY", "")
-	t.Setenv("ANTHROPIC_API_KEY", "from-anthropic")
-	t.Setenv("OPENAI_API_KEY", "")
-	t.Setenv("SDD_LLM_BASE_URL", "")
-	t.Setenv("SDD_LLM_MODEL", "")
-	c := NewFromEnv()
-	if c == nil || c.APIKey != "from-anthropic" {
-		t.Errorf("expected fallback to anthropic, got %+v", c)
-	}
-	if c.Provider != "anthropic" {
-		t.Errorf("expected anthropic provider, got %s", c.Provider)
-	}
-}
-
-func TestNewFromEnv_fallsBackToOpenAI(t *testing.T) {
-	t.Setenv("SDD_LLM_API_KEY", "")
-	t.Setenv("MINIMAX_API_KEY", "")
-	t.Setenv("ANTHROPIC_API_KEY", "")
-	t.Setenv("OPENAI_API_KEY", "from-openai")
-	t.Setenv("SDD_LLM_BASE_URL", "")
-	t.Setenv("SDD_LLM_MODEL", "")
-	c := NewFromEnv()
-	if c == nil || c.APIKey != "from-openai" {
-		t.Errorf("expected fallback to openai, got %+v", c)
-	}
-	if c.Provider != "openai" {
-		t.Errorf("expected openai provider, got %s", c.Provider)
-	}
-	if c.BaseURL != "http://127.0.0.1:8088" {
-		t.Errorf("expected localhost base URL, got %s", c.BaseURL)
-	}
-	if c.Model != "Qwen3.5-9B" {
-		t.Errorf("expected Qwen3.5-9B default model, got %s", c.Model)
 	}
 }
