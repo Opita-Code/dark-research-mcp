@@ -113,7 +113,22 @@ func Classify(query string) Intent {
 		return IntentDark
 	}
 
-	// IPv4 / IPv6 literal → IP geo.
+	// Keyword signals FIRST so context wins over patterns.
+// "vulnerability in 192.168.1.1" should route to threat/cve, not ip.
+// "Docker 1.2.3.4 release notes" should route to news, not ip.
+// (bug-hunt 2026-07-14 BUG-005.)
+	if anyContains(ql, threatKeywords) {
+		return IntentThreat
+	}
+	if anyContains(ql, newsKeywords) {
+		return IntentNews
+	}
+	if anyContains(ql, geoKeywords) {
+		return IntentGeo
+	}
+
+	// IPv4 / IPv6 literal → IP geo. Falls through here only when no
+	// keyword context matched.
 	if reIPv4.MatchString(q) || reIPv6.MatchString(q) {
 		return IntentIP
 	}
@@ -126,17 +141,6 @@ func Classify(query string) Intent {
 	// Domain (only if it looks like one and not already classified).
 	if looksLikeDomain(q) {
 		return IntentDomain
-	}
-
-	// Keyword signals.
-	if anyContains(ql, newsKeywords) {
-		return IntentNews
-	}
-	if anyContains(ql, geoKeywords) {
-		return IntentGeo
-	}
-	if anyContains(ql, threatKeywords) {
-		return IntentThreat
 	}
 
 	// Default: general web.

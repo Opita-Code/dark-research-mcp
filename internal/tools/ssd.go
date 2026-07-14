@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/dark-agents/research-mcp/internal/constitution"
 	"github.com/dark-agents/research-mcp/internal/llm"
@@ -535,7 +537,12 @@ func groundingCheckTool() Tool {
 			// Fetch source content (capped at 8K to keep prompt manageable).
 			req2, _ := http.NewRequestWithContext(ctx, "GET", args.SourceURL, nil)
 			req2.Header.Set("User-Agent", "dark-research-mcp/0.3 (+grounding-check)")
-			httpClient := &http.Client{}
+			// Use a bounded HTTP client. The previous implementation used
+			// &http.Client{} with NO TIMEOUT, allowing slow upstreams to
+			// hang the goroutine indefinitely (bug-hunt 2026-07-14 BUG-003).
+			// 30s covers most legitimate sources; slow-loris / stalled
+			// upstreams fail fast instead of wedging the MCP server.
+			httpClient := &http.Client{Timeout: 30 * time.Second}
 			resp, err := httpClient.Do(req2)
 			if err != nil {
 				return nil, fmt.Errorf("grounding: fetch %s: %w", args.SourceURL, err)
@@ -544,9 +551,17 @@ func groundingCheckTool() Tool {
 			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 				return nil, fmt.Errorf("grounding: fetch %s returned %d", args.SourceURL, resp.StatusCode)
 			}
-			buf := make([]byte, 8*1024)
-			n, _ := resp.Body.Read(buf)
-			sourceContent := string(buf[:n])
+			// Read the full body up to the 8K cap. The previous implementation
+			// used a single Read() which is NOT guaranteed to fill the buffer
+			// (bug-hunt 2026-07-14 BUG-004). For chunked / compressed
+			// responses, that truncated the source to whatever the first
+			// read delivered, often <1K. io.ReadAll + LimitReader is the
+			// same idiom used in artifact_download.go line 491.
+			body, err := io.ReadAll(io.LimitReader(resp.Body, 8*1024))
+			if err != nil {
+				return nil, fmt.Errorf("grounding: read body: %w", err)
+			}
+			sourceContent := string(body)
 			// Strip HTML crud.
 			sourceContent = stripHTMLTags(sourceContent)
 
