@@ -81,6 +81,29 @@ cross-table joins are possible via direct SQL when needed.
 `VibeCase` and the SQL column is `vibe_case` because `case` is a
 reserved word in SQL.
 
+## Harness compatibility
+
+dark-research-mcp speaks MCP over stdio with the standard
+`initialize → notifications/initialized → tools/call` JSON-RPC
+framing. Every AI coding harness that supports that protocol is
+a first-class consumer without any wrapper script or fork. The
+binary auto-loads credentials from the dark-agents vault on
+startup (see `internal/vault/vault.go` LoadIntoEnv) and degrades
+cleanly when no key is present (see "LLM-less mode" below).
+
+The 5 most popular harnesses as of July 2026 (data-driven from
+`dark_mem_recall_research` against `dark.db`):
+
+| Harness | Transport | Install |
+|---|---|---|
+| OpenCode | stdio | `~/.config/opencode/opencode.jsonc` `mcp.dark-research.command` |
+| Claude Code | stdio | `claude mcp add --transport stdio dark-research -- <exe>` |
+| Cursor | stdio | Settings > MCP > command = `<exe>` |
+| Aider | stdio (MCP Code Mode) | `aider --mcp-config <yaml>` |
+| Cline | stdio | Cline > MCP Servers > Add > command = `<exe>` |
+
+Full install snippets in [`docs/HARNESSES.md`](docs/HARNESSES.md).
+
 ## 57 MCP tools
 
 | Family | Count | Tools |
@@ -129,6 +152,45 @@ video, set `has_disclosure=true` in artifact_log BEFORE publishing.
 | C5 | audio | "narrate the demo script" |
 | C6 | multi-modal | "build an Instagram ad: image + caption + CTA" |
 | C7 | mixed | "ship the product launch: code + landing page + ad" |
+
+## LLM-less mode / graceful degradation
+
+Without `SDD_LLM_API_KEY` (and no fallback key in env or the
+`dark-agents-v2/*` vault), the binary still boots and serves every
+tool call. The 57 tools split:
+
+- **22 work full-strength** — 13 OSINT backends, vibe-flow CRUD,
+  read-only dark_mem_*, `web_search`, `web_fetch`,
+  `url_extract_components`, `text_anonymize`. These never call
+  the LLM.
+- **8 return degraded verdicts** — the dark-ssd LLM-as-judge
+  family: `dark_ssd_brand_match`, `dark_ssd_compliance_check`,
+  `dark_ssd_drift_judge`, `dark_ssd_grounding_check`,
+  `dark_ssd_pii_detect`, `dark_ssd_prompt_injection_scan`,
+  `dark_ssd_consensus`, `dark_ssd_list_evaluations`.
+
+The degraded verdict shape matches the regular verdict for each
+tool (so downstream consumers don't need a special case):
+
+| Tool | Degraded verdict fields |
+|---|---|
+| `brand_match` | `match: 0, voice_match: false, issues: ["no_llm_configured"]` |
+| `compliance_check` | `compliant: false, issues: ["no_llm_configured"]` |
+| `drift_judge` | `verdict: "needs_human", drift_items: [], confidence: 0` |
+| `grounding_check` | `grounded: false, confidence: 0, issues: ["no_llm_configured"]` |
+| `pii_detect` | `pii_found: false, overall_severity: "unknown"` |
+| `prompt_injection_scan` | `injection_found: false, severity: "unknown"` |
+| `consensus` | `samples: 0, mode: "no_llm_configured", agreement: "0/0"` |
+
+The audit row in `sdd_evaluations` records
+`refused_attempts=1`, `refusal_pattern="no_llm_configured"`, and
+`model="no_llm_configured"` so the trail makes it unmistakable
+that the verdict was synthesized, not produced by an LLM.
+
+The implementation lives in `internal/tools/ssd.go`'s
+`degradedVerdict`, `handleNoLLM`, and `handleConsensusNoLLM`
+helpers. Every single-shot handler that previously errored on
+`requireLLM()` now routes to `handleNoLLM` instead.
 
 ## dark-ssd LLM-as-judge layer
 

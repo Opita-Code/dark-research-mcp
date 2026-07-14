@@ -26,6 +26,7 @@ import (
 	"github.com/dark-agents/research-mcp/internal/safety"
 	darkserver "github.com/dark-agents/research-mcp/internal/server"
 	"github.com/dark-agents/research-mcp/internal/tools"
+	"github.com/dark-agents/research-mcp/internal/vault"
 )
 
 // version is set at link time via:
@@ -62,6 +63,29 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "config error: %v\n", err)
 		os.Exit(2)
+	}
+
+	// Load any missing credentials from the dark-agents vault BEFORE
+	// initializing the LLM client or the OSINT backends. This makes the
+	// binary standalone: no wrapper script needed to inject
+	// MINIMAX_API_KEY, SDD_LLM_API_KEY, BRAVE_API_KEY, etc. The caller
+	// (parent harness) wins if it pre-populated any of these env vars;
+	// otherwise the vault supplies them. Missing secrets are a silent
+	// skip — tools that need credentials surface their own errors when
+	// called, not at boot.
+	//
+	// On non-Windows platforms where the vault backend is a stub
+	// returning ErrNotImplemented, LoadIntoEnv returns nil and the
+	// binary still boots. Graceful degradation at the boot boundary is
+	// the contract; full functionality without keys is not.
+	if err := vault.LoadIntoEnv([]string{
+		"SDD_LLM_API_KEY",
+		"SDD_LLM_BASE_URL",
+		"SDD_LLM_MODEL",
+		"MINIMAX_API_KEY",
+		"BRAVE_API_KEY",
+	}); err != nil {
+		log.Printf("dark-research-mcp: vault autoload failed: %v", err)
 	}
 
 	// v0.1: log level is read but routing stays on the stdlib log package.

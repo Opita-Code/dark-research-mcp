@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"os"
 	"testing"
 )
 
@@ -76,5 +77,39 @@ func TestOpen_returnsNonNil(t *testing.T) {
 	v := Open()
 	if v == nil {
 		t.Fatal("Open() returned nil")
+	}
+}
+
+// LoadIntoEnv tests.
+//
+// These tests verify the LoadIntoEnv policy without requiring a real
+// vault backend: they exercise the in-process branches (env-var
+// already set → caller wins, name not in vault → silent skip,
+// platform without vault → silent skip via ErrNotImplemented) which
+// are the contract every consumer of LoadIntoEnv relies on.
+//
+// We pick names that we know are absent from any sane dark-agents
+// vault (DARK_RESEARCH_LOADINTOENV_TEST_*) so the test stays
+// hermetic regardless of the developer's machine state.
+
+func TestLoadIntoEnv_skipsExistingEnvVar(t *testing.T) {
+	const name = "DARK_RESEARCH_LOADINTOENV_TEST_HARNESS"
+	t.Setenv(name, "from-caller")
+	if err := LoadIntoEnv([]string{name}); err != nil {
+		t.Fatalf("LoadIntoEnv: %v", err)
+	}
+	if got := os.Getenv(name); got != "from-caller" {
+		t.Errorf("caller value was overridden: got %q, want %q", got, "from-caller")
+	}
+}
+
+func TestLoadIntoEnv_silentOnNotFound(t *testing.T) {
+	const name = "DARK_RESEARCH_LOADINTOENV_TEST_MISSING"
+	t.Setenv(name, "")
+	if err := LoadIntoEnv([]string{name}); err != nil {
+		t.Fatalf("expected nil error on not-found, got %v", err)
+	}
+	if got := os.Getenv(name); got != "" {
+		t.Errorf("expected empty env var, got %q", got)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dark-agents/research-mcp/internal/mem"
@@ -36,6 +37,7 @@ type Router struct {
 	reg     *Registry
 	http    *http.Client
 	lastHit map[string]time.Time // backend name → last call time
+	rateMu  sync.Mutex           // guards lastHit (concurrent Route() calls)
 	mem     MemSink              // optional; nil = no persistence
 	session string               // session id stamped on saved runs
 }
@@ -82,19 +84,33 @@ func (r *Router) Route(ctx context.Context, query string, intentHint Intent) (*R
 		res.BackendsTried = append(res.BackendsTried, b.Name)
 
 		// Rate-limit: sleep until lastHit + RateLimitMs.
+		//
+		// All lastHit access is guarded by r.rateMu. The previous
+		// implementation read and wrote the map without locking;
+		// two concurrent Route() calls into the same backend would
+		// panic with 'fatal error: concurrent map read and map write'
+		// (bug-hunt 2026-07-14 BUG-006). We compute the sleep duration
+		// inside the lock, then drop the lock during the actual sleep
+		// (which respects ctx.Done()) before re-acquiring to stamp.
 		if b.RateLimitMs > 0 {
+			var wait time.Duration
+			r.rateMu.Lock()
 			if last, ok := r.lastHit[b.Name]; ok {
-				wait := time.Duration(b.RateLimitMs)*time.Millisecond - time.Since(last)
-				if wait > 0 {
-					select {
-					case <-time.After(wait):
-					case <-ctx.Done():
-						res.Took = time.Since(started)
-						return res, ctx.Err()
-					}
+				wait = time.Duration(b.RateLimitMs)*time.Millisecond - time.Since(last)
+			}
+			r.rateMu.Unlock()
+
+			if wait > 0 {
+				select {
+				case <-time.After(wait):
+				case <-ctx.Done():
+					res.Took = time.Since(started)
+					return res, ctx.Err()
 				}
 			}
+			r.rateMu.Lock()
 			r.lastHit[b.Name] = time.Now()
+			r.rateMu.Unlock()
 		}
 
 		body, err := r.call(ctx, b, query)
@@ -227,7 +243,7 @@ func (r *Router) call(ctx context.Context, b Backend, query string) ([]byte, err
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "dark-research-mcp/"+Version+" (+https://github.com/Opita-Code/dark-research-mcp)")
+	req.Header.Set("User-Agent", "dark-research-mcp/"+Version+" (+https://github.com/dark-agents/research-mcp)")
 	req.Header.Set("Accept", "application/json, text/html;q=0.9")
 
 	if b.Auth != "" {

@@ -13,6 +13,7 @@ package vault
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -73,6 +74,47 @@ func ValidateName(name string) error {
 	}
 	if strings.ContainsAny(name, "/\\\x00\n\r") {
 		return fmt.Errorf("vault: name contains invalid characters")
+	}
+	return nil
+}
+
+// LoadIntoEnv loads each named secret from the vault into the process
+// environment via os.Setenv. The policy is:
+//
+//   - If os.Getenv(name) is already non-empty (parent harness or shell
+//     provided it), the vault value is NOT used. The caller wins.
+//   - If os.Getenv(name) is empty or unset, the vault value is set.
+//   - If the secret is not in the vault (ErrNotFound), the name is
+//     silently skipped — missing credentials are not a fatal error at
+//     boot; tools that need them surface their own errors when called.
+//   - If the platform has no vault implementation (ErrNotImplemented,
+//     the *nix stub), LoadIntoEnv returns nil immediately. The binary
+//     still boots; callers without credentials fail at the tool level,
+//     not the boot level.
+//
+// This makes dark-research-mcp standalone: the binary looks up
+// credentials from the vault when the parent harness (opencode,
+// Claude Code, Cursor, Aider, Cline, ...) didn't pre-populate the
+// env. See docs/HARNESSES.md for the install pattern across 5
+// popular harnesses. On non-Windows platforms where the vault is
+// not yet implemented, the binary still boots — graceful degradation
+// is the contract here, not full functionality.
+func LoadIntoEnv(names []string) error {
+	v := Open()
+	for _, name := range names {
+		if os.Getenv(name) != "" {
+			continue // caller-provided, don't override
+		}
+		val, err := v.Get(name)
+		if err != nil {
+			if errors.Is(err, ErrNotFound) || errors.Is(err, ErrNotImplemented) {
+				continue
+			}
+			return fmt.Errorf("vault: load %s: %w", name, err)
+		}
+		if err := os.Setenv(name, val); err != nil {
+			return fmt.Errorf("vault: setenv %s: %w", name, err)
+		}
 	}
 	return nil
 }
