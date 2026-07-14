@@ -10,7 +10,7 @@
 │  ╚██████╔╝╚██████╗██████╔╝██║  ██║    ██║ ╚═╝ ██║╚██████╗██║                 │
 │   ╚═════╝  ╚═════╝╚═════╝ ╚═╝  ╚═╝    ╚═╝     ╚═╝ ╚═════╝╚═╝                 │
 │                                                                              │
-│                            Opita Dark Research MCP                           │
+│                       Opita Code Dark Research MCP                           │
 │                                                                              │
 │          Research • Threat Intelligence • Automation • MCP Server            │
 │                                                                              │
