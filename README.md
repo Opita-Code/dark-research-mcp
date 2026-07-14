@@ -66,9 +66,14 @@ git clone https://github.com/Opita-Code/dark-research-mcp.git
 cd dark-research-mcp
 go build -o dark-research-mcp ./cmd/dark-research-mcp
 
-# 2. Configura (la API key va en tu vault local, no en variables de entorno planas)
+# 2. Configura. Si tienes el vault de dark-agents cargado en tu sesión
+#    (Use-DarkAgentSecrets / Save-DarkAgentSecret), el binario auto-carga
+#    SDD_LLM_API_KEY / MINIMAX_API_KEY / BRAVE_API_KEY al arrancar. Sin
+#    vault, exporta DARK_DB y listo: 22 de las 57 herramientas siguen
+#    funcionando (las OSINT y vibe-flow CRUD), y las 8 jueces dark-ssd
+#    devuelven verdict degradado en lugar de error — ver "LLM-less mode"
+#    en docs/HARNESSES.md.
 export DARK_DB="$LOCALAPPDATA/dark-agents/dark.db"
-export SDD_LLM_API_KEY="$(powershell -Command 'Import-Module dark-agents-vault.psm1; (Get-DarkAgentSecret MINIMAX_API_KEY)')"
 
 # 3. Primera consulta — un CVE
 ./dark-research-mcp <<'EOF'
@@ -77,6 +82,9 @@ export SDD_LLM_API_KEY="$(powershell -Command 'Import-Module dark-agents-vault.p
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"dark_research_cve","arguments":{"query":"CVE-2024-3094"}}}
 EOF
 ```
+
+> Compatible con OpenCode, Claude Code, Cursor, Aider y Cline — ver
+> la tabla de instalación por harness en [`docs/HARNESSES.md`](docs/HARNESSES.md).
 
 Salida esperada (truncada):
 
@@ -288,10 +296,11 @@ git diff fixtures/   # revisar el diff antes de commit
 
 ## Status
 
+- ✅ **v0.6.0** — multi-harness compatible (OpenCode, Claude Code, Cursor, Aider, Cline) + vault auto-load (`feat(vault): LoadIntoEnv`) + graceful degradation in 8 dark-ssd judges when no LLM key (returns verdict-shaped degraded responses; same JSON shape as regular verdicts); docs/HARNESSES.md
 - ✅ **v0.3.0** — dark_ssd_consensus (multi-sample judging) + dark_research_artifact_download (canonical fetch pattern) + tier-2 dark_mem_export_run/diff; 57 tools, 100 tests
 - ✅ **v0.2.0** — CRUD completion (update/delete on 5 tables), spec_render, pii_detect + prompt_injection_scan (security gates); 53 tools, 80 tests
 - ✅ **v0.1.0** — initial open-source release (45 tools, 72 tests, CI, MIT)
-- 🆕 **unreleased** — VCR fixture transport (`internal/research/testutil/`) + 40 new tests (parser unit + VCR router) covering 13 backends with recorded responses; live status probe (`scripts/osint-status.sh`) + weekly `osint-status` workflow; **156 tests**
+- 🆕 **unreleased** — VCR fixture transport (`internal/research/testutil/`) + 40 new tests (parser unit + VCR router) covering 13 backends with recorded responses; live status probe (`scripts/osint-status.sh`) + weekly `osint-status` workflow
 - 🚧 Add `go-keyring` impl for Linux/macOS vault
 - 🚧 Spec diff library (structured change detection)
 - 🚧 Cross-platform release artifacts in CI
