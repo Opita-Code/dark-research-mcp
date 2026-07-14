@@ -27,8 +27,17 @@ import (
 //   4. Persists the verdict in sdd_evaluations
 //   5. Returns the verdict + audit info to the agent
 //
-// All tools return a clean error when no LLM is configured so the agent
-// can fall back to its own LLM-as-judge reasoning.
+// Graceful degradation when no LLM is configured: instead of returning
+// a hard error, each tool synthesizes a degraded verdict whose shape
+// matches the tool's normal output (match=0, compliant=false,
+// verdict=needs_human, grounded=false, pii_found=false,
+// injection_found=false) so the agent receives a structured answer
+// it can act on (escalate to its own reasoning) instead of an opaque
+// tool error. The audit row records refusal_pattern="no_llm_configured"
+// so the trail makes it obvious the verdict was synthesized, not
+// judged. The model field is the sentinel "no_llm_configured" for
+// the same reason. This is the contract: the MCP boots without a
+// key, every tool returns an answer, no crash.
 // ---------------------------------------------------------------------------
 
 // sharedLLM returns the singleton LLM client (lazy, env-configured).
@@ -70,14 +79,123 @@ func truncateContent(s string, max int) string {
 	return s[:max] + "..."
 }
 
-// requireLLM returns a clear error when no LLM is configured. The agent
-// can then fall back to its own reasoning.
+// requireLLM returns a clear error when no LLM is configured. Callers
+// usually handle this via handleNoLLM (graceful degradation) but the
+// raw error path is still available for tools that prefer a hard
+// failure.
 func requireLLM() (*llm.Client, error) {
 	c := getLLM()
 	if c == nil {
 		return nil, fmt.Errorf("dark-ssd: LLM not configured. Set SDD_LLM_API_KEY (or MINIMAX_API_KEY) and restart opencode, or use the agent's own LLM-as-judge reasoning")
 	}
 	return c, nil
+}
+
+// degradedVerdict returns the JSON-shaped degraded verdict for the
+// given eval type when no LLM is configured, plus the refusal pattern
+// string used on the sdd_evaluations row to mark the verdict as
+// synthesized (not judged). The shape matches each tool's normal
+// verdict so downstream consumers see a structurally identical
+// response. The numeric / boolean defaults — match=0, compliant=false,
+// grounded=false, pii_found=false, injection_found=false — force
+// the agent to escalate to its own reasoning rather than let a
+// placeholder answer masquerade as a judgement. drift_judge uses
+// verdict="needs_human" as its canonical escalation signal (defined
+// in dark_ssd_drift_judge's jsonschema).
+func degradedVerdict(evalType string) (verdictJSON string, refusalPattern string) {
+	const pattern = "no_llm_configured"
+	const reason = "dark-ssd: LLM not configured (SDD_LLM_API_KEY / MINIMAX_API_KEY unset); agent must judge"
+	switch evalType {
+	case "brand_match":
+		return fmt.Sprintf(`{"match":0,"voice_match":false,"issues":["%s"],"reasoning":%q}`, pattern, reason), pattern
+	case "compliance_check":
+		return fmt.Sprintf(`{"compliant":false,"issues":["%s"],"required_disclosures":[],"reasoning":%q}`, pattern, reason), pattern
+	case "drift_judge":
+		return fmt.Sprintf(`{"verdict":"needs_human","drift_items":[],"confidence":0,"reasoning":%q}`, reason), pattern
+	case "grounding_check":
+		return fmt.Sprintf(`{"grounded":false,"confidence":0,"evidence":"","issues":["%s"]}`, pattern), pattern
+	case "pii_detect":
+		return fmt.Sprintf(`{"pii_found":false,"items":[],"overall_severity":"unknown","recommendation":"agent must review","confidence":0,"reasoning":%q}`, reason), pattern
+	case "prompt_injection_scan":
+		return fmt.Sprintf(`{"injection_found":false,"category":"unknown","severity":"unknown","evidence":"","recommendation":"agent must review","confidence":0,"reasoning":%q}`, reason), pattern
+	default:
+		return `{}`, pattern
+	}
+}
+
+// handleNoLLM synthesizes and persists the degraded verdict for a
+// single-shot dark_ssd_* tool. Returns the structured response
+// shaped like the regular success path (verdict object + persisted
+// bool + model) so the agent sees no behavioural difference between
+// "no LLM available" and "LLM answered". The model field is set to
+// the sentinel "no_llm_configured" so callers and audits can tell
+// the verdict was synthesized, not produced by the configured LLM.
+//
+// Persistence: refused_attempts=1 + refusal_pattern="no_llm_configured"
+// give the audit trail in sdd_evaluations an unmistakable marker.
+// When mem is nil, persistence is skipped (persisted=false) and the
+// caller still gets a structured response — graceful degradation at
+// every layer.
+func handleNoLLM(m *mem.Store, ctx context.Context, evalType, targetType, targetID string) (*mcp.CallToolResult, error) {
+	degradedJSON, pattern := degradedVerdict(evalType)
+	persisted := false
+	if m != nil {
+		_, _ = m.SaveSDDEvaluation(ctx, fillConstitutionFields(&mem.SDDEvaluation{
+			EvalType:        evalType,
+			TargetType:      targetType,
+			TargetID:        targetID,
+			VerdictJSON:     degradedJSON,
+			Confidence:      0,
+			PromptVersion:   "v1",
+			Model:           "no_llm_configured",
+			RefusedAttempts: 1,
+			RefusalPattern:  pattern,
+		}))
+		persisted = true
+	}
+	var verdict map[string]any
+	_ = json.Unmarshal([]byte(degradedJSON), &verdict)
+	return jsonResult(map[string]any{
+		"verdict":   verdict,
+		"persisted": persisted,
+		"model":     "no_llm_configured",
+	}), nil
+}
+
+// handleConsensusNoLLM returns a consensus-shaped response when no
+// LLM is configured: 0 samples ran, the headline count map carries
+// the "no_llm_configured" key, agreement is "0/0", and a single
+// audit row is persisted (not N — the N-sample audit trail would be
+// noise here since no judgement actually occurred).
+func handleConsensusNoLLM(m *mem.Store, ctx context.Context, args ssdConsensusArgs) (*mcp.CallToolResult, error) {
+	degradedJSON, pattern := degradedVerdict(args.EvalType)
+	if m != nil {
+		_, _ = m.SaveSDDEvaluation(ctx, fillConstitutionFields(&mem.SDDEvaluation{
+			EvalType:        args.EvalType,
+			TargetType:      "consensus_degraded",
+			TargetID:        truncateContent(args.Content, 200),
+			VerdictJSON:     degradedJSON,
+			Confidence:      0,
+			PromptVersion:   "v1",
+			Model:           "no_llm_configured",
+			RefusedAttempts: 1,
+			RefusalPattern:  pattern,
+		}))
+	}
+	return jsonResult(map[string]any{
+		"eval_type":         args.EvalType,
+		"samples":           0,
+		"mode":              "no_llm_configured",
+		"mode_count":        0,
+		"agreement":         "0/0",
+		"confidence_avg":    0.0,
+		"confidence_stddev": 0.0,
+		"confidence_min":    0.0,
+		"confidence_max":    0.0,
+		"headline_counts":   map[string]int{"no_llm_configured": 0},
+		"raw_samples":       []any{},
+		"model":             "no_llm_configured",
+	}), nil
 }
 
 // judgeSystemPrompt returns the system prompt the given tool sends
@@ -236,7 +354,8 @@ func brandMatchTool() Tool {
 			}
 			c, err := requireLLM()
 			if err != nil {
-				return nil, err
+				m := sharedMem()
+				return handleNoLLM(m, ctx, "brand_match", "brand", args.BrandID)
 			}
 			m := sharedMem()
 			if m == nil {
@@ -324,7 +443,8 @@ func complianceCheckTool() Tool {
 			}
 			c, err := requireLLM()
 			if err != nil {
-				return nil, err
+				m := sharedMem()
+				return handleNoLLM(m, ctx, "compliance_check", "jurisdiction", args.Jurisdiction)
 			}
 			m := sharedMem()
 			if m == nil {
@@ -423,7 +543,8 @@ func driftJudgeTool() Tool {
 			}
 			c, err := requireLLM()
 			if err != nil {
-				return nil, err
+				m := sharedMem()
+				return handleNoLLM(m, ctx, "drift_judge", "artifact", fmt.Sprintf("%d", args.ArtifactID))
 			}
 			m := sharedMem()
 			if m == nil {
@@ -527,7 +648,8 @@ func groundingCheckTool() Tool {
 			}
 			c, err := requireLLM()
 			if err != nil {
-				return nil, err
+				m := sharedMem()
+				return handleNoLLM(m, ctx, "grounding_check", "claim", truncateContent(args.Claim, 200))
 			}
 			// SSRF protection.
 			if _, err := safety.ValidateURL(args.SourceURL, false); err != nil {
@@ -640,7 +762,9 @@ func piiDetectTool() Tool {
 			}
 			c, err := requireLLM()
 			if err != nil {
-				return nil, err
+				m := sharedMem()
+				targetID := fmt.Sprintf("pii:%x", sha1Of(args.Content))
+				return handleNoLLM(m, ctx, "pii_detect", "content", targetID)
 			}
 
 			system := judgeSystemPrompt("dark_ssd_pii_detect")
@@ -711,7 +835,9 @@ func promptInjectionTool() Tool {
 			}
 			c, err := requireLLM()
 			if err != nil {
-				return nil, err
+				m := sharedMem()
+				targetID := fmt.Sprintf("inject:%x", sha1Of(args.Content))
+				return handleNoLLM(m, ctx, "prompt_injection_scan", "content", targetID)
 			}
 
 			system := judgeSystemPrompt("dark_ssd_prompt_injection_scan")
@@ -790,7 +916,8 @@ func ssdConsensusTool() Tool {
 			}
 			c, err := requireLLM()
 			if err != nil {
-				return nil, err
+				m := sharedMem()
+				return handleConsensusNoLLM(m, ctx, args)
 			}
 			if args.N <= 0 {
 				args.N = 3
