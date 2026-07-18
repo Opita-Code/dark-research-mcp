@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -182,4 +183,69 @@ func TestComplete_FallsBackToHarnessOnNetworkError(t *testing.T) {
 	if !directCalled {
 		t.Errorf("direct provider was never called; fallback chain didn't fire")
 	}
+}
+
+// TestNewFromEnv_ScrapperActive_ArmsHarnessFallback verifies the
+// canonical fix path (the assertion version of
+// TestNewFromEnv_ScrapperDown_LoadsHarnessDotenv in
+// harness_dotenv_real_test.go): when DARK_SCRAPPER_URL is set
+// (scrapper pattern) but the process env has no API key, NewFromEnv
+// populates Client.HarnessDotenvKey + Client.HarnessDotenvProvider
+// from the harness dotenv loader.
+//
+// We control the harness env via a temp $HOME/.env file. This works
+// on Unix because loadUserLevelEnv is a no-op there and
+// os.UserHomeDir() reads $HOME. On Windows, loadUserLevelEnv reads
+// HKCU\Environment (registry), which is not mockable from a Go test,
+// so we skip there — the operator-local diagnostic test covers the
+// Windows path.
+func TestNewFromEnv_ScrapperActive_ArmsHarnessFallback(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows harness env comes from HKCU\\Environment (registry); covered by the _real_test.go diagnostic. This test exercises the $HOME/.env path on Unix.")
+	}
+
+	// Stand up a controlled harness env in a temp dir.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // belt-and-braces in case UserHomeDir probes USERPROFILE on this build
+	if err := os.WriteFile(filepath.Join(home, ".env"), []byte(
+		"MINIMAX_API_KEY=sk-test-minimax-fake\n"+
+			"ANTHROPIC_API_KEY=sk-test-anthropic-fake\n"+
+			"OPENAI_API_KEY=sk-test-openai-fake\n",
+	), 0600); err != nil {
+		t.Fatalf("write fake .env: %v", err)
+	}
+
+	// Force the scrapper path and strip all in-process API keys so the
+	// only source of truth for HarnessDotenvKey is the harness loader.
+	t.Setenv("DARK_SCRAPPER_URL", "http://127.0.0.1:1")
+	t.Setenv("SDD_LLM_PROVIDER", "")
+	t.Setenv("SDD_LLM_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("MINIMAX_API_KEY", "")
+
+	// Reset the harness dotenv memo so our fake .env is loaded fresh.
+	resetDotenvCache()
+	t.Cleanup(resetDotenvCache)
+
+	c := NewFromEnv()
+	if c == nil {
+		t.Fatalf("NewFromEnv() returned nil; expected non-nil client (scrapper active)")
+	}
+	if c.HarnessDotenvKey == "" {
+		t.Errorf("HarnessDotenvKey is empty; scrapper is active but the harness fallback was not armed from $HOME/.env")
+	}
+	if c.HarnessDotenvProvider == "" {
+		t.Errorf("HarnessDotenvProvider is empty")
+	}
+	// Priority chain in client.go: MINIMAX_API_KEY > SDD_LLM_API_KEY >
+	// ANTHROPIC_API_KEY (skip ds_*) > OPENAI_API_KEY.
+	if c.HarnessDotenvKey != "sk-test-minimax-fake" {
+		t.Errorf("HarnessDotenvKey = %q, want %q (MINIMAX_API_KEY should win the priority chain)", c.HarnessDotenvKey, "sk-test-minimax-fake")
+	}
+	if c.HarnessDotenvProvider != ProviderAnthropic {
+		t.Errorf("HarnessDotenvProvider = %q, want %q", c.HarnessDotenvProvider, ProviderAnthropic)
+	}
+	t.Logf("fallback chain armed: provider=%s, key=%s***", c.HarnessDotenvProvider, c.HarnessDotenvKey[:4])
 }
