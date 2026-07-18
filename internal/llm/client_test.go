@@ -103,19 +103,31 @@ func TestCompleteJSON_invalidJSON(t *testing.T) {
 	}
 }
 
+// TestNewFromEnv_* assume "direct mode" (no dark-scrapper daemon in the
+// loop) and a deterministic provider chain. The helper
+// resetLLMEnv (defined in dark_scrapper_test.go) clears every env
+// var NewFromEnv reads via os.Unsetenv — strictly stronger than
+// t.Setenv(key, "") which leaves the variable "set but empty" — and
+// lets each test opt in to specific vars via the set map. Same
+// isolation pattern used by TestDarkScrapper_NewFromEnv_*.
+//
+// Without this isolation, a developer running `go test ./...` from a
+// shell with Use-DarkAgentSecrets loaded sees spurious failures
+// because ANTHROPIC_API_KEY and ANTHROPIC_BASE_URL leak in from the
+// parent env, even after t.Setenv(key, "") on the keys this test
+// directly checks. The post-BUG-001 NewFromEnv recognizes
+// DARK_SCRAPPER_URL as a daemon-mode signal (bug-hunt 2026-07-14
+// BUG-001, commit 4dd0045), but the leak also reaches the key chain
+// on lines 107–109 of internal/llm/client.go.
 func TestNewFromEnv_returnsNilWithoutKey(t *testing.T) {
-	t.Setenv("SDD_LLM_API_KEY", "")
-	t.Setenv("MINIMAX_API_KEY", "")
+	resetLLMEnv(t, nil)
 	if c := NewFromEnv(); c != nil {
 		t.Errorf("expected nil, got %+v", c)
 	}
 }
 
 func TestNewFromEnv_usesKey(t *testing.T) {
-	t.Setenv("SDD_LLM_API_KEY", "from-sdd")
-	t.Setenv("MINIMAX_API_KEY", "from-minimax")
-	t.Setenv("SDD_LLM_BASE_URL", "")
-	t.Setenv("SDD_LLM_MODEL", "")
+	resetLLMEnv(t, map[string]string{"SDD_LLM_API_KEY": "from-sdd"})
 	c := NewFromEnv()
 	if c == nil {
 		t.Fatal("expected client")
@@ -132,10 +144,7 @@ func TestNewFromEnv_usesKey(t *testing.T) {
 }
 
 func TestNewFromEnv_fallsBackToMinimax(t *testing.T) {
-	t.Setenv("SDD_LLM_API_KEY", "")
-	t.Setenv("MINIMAX_API_KEY", "from-minimax")
-	t.Setenv("SDD_LLM_BASE_URL", "")
-	t.Setenv("SDD_LLM_MODEL", "")
+	resetLLMEnv(t, map[string]string{"MINIMAX_API_KEY": "from-minimax"})
 	c := NewFromEnv()
 	if c == nil || c.APIKey != "from-minimax" {
 		t.Errorf("expected fallback to minimax, got %+v", c)
