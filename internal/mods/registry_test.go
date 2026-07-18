@@ -48,6 +48,13 @@ func TestRegistry_Discover_FindsModsUnderSearchPath(t *testing.T) {
 	makeTestMod(t, dir, "alpha")
 	makeTestMod(t, dir, "beta")
 	t.Setenv("DARK_MODS_PATH", dir)
+	// Isolate from the operator's installed mods: defaultSearchPaths
+	// also walks $USERPROFILE/.dark-research/mods (via os.UserHomeDir)
+	// and $DARK_RESEARCH_HOME/mods. Without these overrides the
+	// operator's ~/.dark-research/mods leaks into the count and
+	// the assertion fails on hosts that have installed mods there.
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Setenv("DARK_RESEARCH_HOME", "")
 
 	r := NewRegistry(nil)
 	got, err := r.Discover()
