@@ -122,6 +122,11 @@ func main() {
 	active := constitution.Active()
 	log.Printf("dark-research-mcp: constitution=%s source=%s", active.ID(), active.Source)
 
+	// Detect the parent harness so the operator can see which AI
+	// coding agent spawned this MCP server. Best-effort: when no
+	// marker matches we log "unknown" and proceed identically.
+	log.Printf("dark-research-mcp: detected_harness=%s", llm.DetectHarness())
+
 	// Initialize the mods registry. The store is best-effort
 	// (mod_loads rows are audit, not blocking); a nil store is
 	// acceptable in tests that don't need persistence.
