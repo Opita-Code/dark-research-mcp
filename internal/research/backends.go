@@ -90,6 +90,13 @@ type Result struct {
 	Took          time.Duration `json:"took_ms"`
 	Errors        []BackendError `json:"errors,omitempty"`
 	Items         []Item `json:"results"`
+
+	// Summary (v0.8.1+) is an optional one-paragraph analyst summary
+	// produced by the LLM when EnableSynthesize is true AND the
+	// corroboration threshold (≥2 items from ≥2 backends) is met.
+	// Empty when synthesis was skipped (no LLM client, no key,
+	// threshold not met, or LLM call failed).
+	Summary string `json:"summary,omitempty"`
 }
 
 // BackendError records a non-fatal failure so the agent can debug.

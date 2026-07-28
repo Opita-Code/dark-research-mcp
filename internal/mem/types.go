@@ -29,6 +29,13 @@ type Item struct {
 	Lang        string  `json:"lang,omitempty"`
 	Raw         string  `json:"raw,omitempty"` // JSON blob
 	CreatedAt   string  `json:"created_at"`
+
+	// DedupKey (v0.8.1+) is the SHA-256 hex of CanonicalizeURL(URL).
+	// Populated by the router when items are inserted; enables
+	// cross-run persistence-aware recall (cache.go) and reduces
+	// redundant fetches within per-intent TTL windows. Empty for
+	// text-only findings with no URL.
+	DedupKey string `json:"dedup_key,omitempty"`
 }
 
 // BackendError mirrors research.BackendError but lives in this package

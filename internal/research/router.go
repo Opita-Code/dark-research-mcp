@@ -36,6 +36,13 @@ type MemSink interface {
 	SaveRun(ctx context.Context, run *mem.ResearchRun) (int64, error)
 }
 
+// PersistenceReader is the interface for cache lookup (v0.8.1+).
+// mem.Store satisfies it; tests can stub with an in-memory fake.
+type PersistenceReader interface {
+	LatestRunByQuery(ctx context.Context, query, intent string) (*mem.ResearchRun, error)
+	ListResearchItems(ctx context.Context, runID int64, source string, limit int) ([]mem.Item, error)
+}
+
 // Router orchestrates a query against the registry.
 type Router struct {
 	reg     *Registry
@@ -44,6 +51,16 @@ type Router struct {
 	rateMu  sync.Mutex           // guards lastHit (concurrent Route() calls)
 	mem     MemSink              // optional; nil = no persistence
 	session string               // session id stamped on saved runs
+
+	// MemStore is the full persistence layer used for persistence-
+	// aware recall (v0.8.1+). Optional; nil disables caching.
+	// Distinct from `mem` (MemSink) because cache lookup needs more
+	// methods than SaveRun. Both can be nil; the router still works.
+	MemStore PersistenceReader
+
+	// LLMClient (v0.8.1+) drives optional result synthesis. Optional;
+	// nil means synthesis is skipped (the router never errors out).
+	LLMClient LLMClient
 
 	// MaxBackends caps how many backends are tried per Route() call.
 	// 0 (zero value) means "all backends for the intent". Useful for
@@ -55,6 +72,21 @@ type Router struct {
 	// 0 (zero value) defaults to 20. Callers can set higher (e.g.
 	// dark_research_multi) or lower (e.g. a quick-preview tool).
 	MaxItems int
+
+	// EnableCache (v0.8.1+) toggles persistence-aware recall. When
+	// true, the router consults MemStore.LatestRunByQuery before
+	// fanning out to backends; if the most recent run for (query,
+	// intent) is within TTL(intent), the cached items are returned
+	// and BackendUsed is stamped "cache". When false (default),
+	// every call hits the network. Set this when wiring the router.
+	EnableCache bool
+
+	// EnableSynthesize (v0.8.1+) toggles optional LLM synthesis of
+	// the multi-backend result. When true and LLMClient != nil and
+	// SDD_LLM_API_KEY is set, the router calls Synthesize after the
+	// backend fan-out and populates Result.Summary. Failures degrade
+	// gracefully (Summary stays empty, no error propagated to caller).
+	EnableSynthesize bool
 }
 
 // NewRouter builds a router with the given registry.
@@ -64,6 +96,20 @@ func NewRouter(reg *Registry, hc *http.Client) *Router {
 	}
 	return &Router{reg: reg, http: hc, lastHit: map[string]time.Time{}, MaxItems: 20}
 }
+
+// SetMemStore wires the full persistence layer used for cache
+// lookup. Optional; pass nil to disable caching.
+func (r *Router) SetMemStore(s PersistenceReader) { r.MemStore = s }
+
+// SetEnableCache toggles persistence-aware recall on/off.
+func (r *Router) SetEnableCache(b bool) { r.EnableCache = b }
+
+// SetLLMClient wires the optional LLM client used for result
+// synthesis. Optional; pass nil to disable synthesis.
+func (r *Router) SetLLMClient(c LLMClient) { r.LLMClient = c }
+
+// SetEnableSynthesize toggles LLM synthesis on/off.
+func (r *Router) SetEnableSynthesize(b bool) { r.EnableSynthesize = b }
 
 // SetMem wires a MemSink so successful runs get persisted.
 // Pass nil to disable persistence.
@@ -100,6 +146,29 @@ func (r *Router) Route(ctx context.Context, query string, intentHint Intent) (*R
 	res := &Result{
 		Intent: intent,
 		Query:  query,
+	}
+
+	// v0.8.1: persistence-aware recall. Before fanning out to backends,
+	// consult MemStore for the most recent run matching (query, intent).
+	// If it's within TTL(intent), return cached items + stamp BackendUsed
+	// "cache" so the caller can tell no HTTP was made.
+	if r.EnableCache && r.MemStore != nil {
+		maxItems := r.MaxItems
+		if maxItems <= 0 {
+			maxItems = 20
+		}
+		cached, hit, err := LookupCached(ctx, r.MemStore, intent, query, maxItems)
+		if err != nil {
+			// Cache miss is non-fatal; log to stderr but proceed to
+			// the normal backend fan-out.
+			fmt.Fprintf(os.Stderr, "research: cache lookup failed: %v\n", err)
+		} else if hit {
+			res.Items = cached
+			res.BackendUsed = "cache"
+			res.BackendsTried = []string{"cache"}
+			res.Took = time.Since(started)
+			return res, nil
+		}
 	}
 
 	backends := r.reg.For(intent)
@@ -212,6 +281,12 @@ func (r *Router) Route(ctx context.Context, query string, intentHint Intent) (*R
 		return res, fmt.Errorf("all backends failed for intent %q", intent)
 	}
 
+	// v0.8.1: optional LLM synthesis (degrades gracefully).
+	if r.EnableSynthesize && r.LLMClient != nil {
+		summary, _ := Synthesize(ctx, r.LLMClient, query, merged)
+		res.Summary = summary
+	}
+
 	r.persist(ctx, query, intent, res)
 	return res, nil
 }
@@ -253,6 +328,7 @@ func (r *Router) persist(ctx context.Context, query string, intent Intent, res *
 			Confidence:  it.Confidence,
 			FreshnessAt: it.FreshnessAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
 			Lang:        it.Lang,
+			DedupKey:    it.DedupKey,
 		})
 	}
 	for _, e := range res.Errors {

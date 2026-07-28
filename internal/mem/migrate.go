@@ -94,6 +94,25 @@ var AllMigrations = []Migration{
 			ALTER TABLE sdd_evaluations DROP COLUMN constitution_id;
 		`,
 	},
+	{
+		Version: 4,
+		Name:    "research_items_dedup_key",
+		// v0.8.1: enable cross-run persistence-aware recall (cache.go
+		// uses dedup_key to look up items by canonical URL hash within
+		// per-intent TTL windows). The column is nullable so existing
+		// rows remain valid; they get backfilled lazily on next save.
+		// The index supports fast SELECT WHERE dedup_key IN (...) which
+		// is the hot path for the cache lookup.
+		Up: `
+			ALTER TABLE research_items ADD COLUMN dedup_key TEXT;
+			CREATE INDEX IF NOT EXISTS idx_research_items_dedup_key
+				ON research_items(dedup_key);
+		`,
+		Down: `
+			DROP INDEX IF EXISTS idx_research_items_dedup_key;
+			ALTER TABLE research_items DROP COLUMN dedup_key;
+		`,
+	},
 }
 
 // schemaV1 is the canonical initial schema. Kept as a separate constant

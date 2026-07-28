@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // SaveRun persists a research run + its items in one transaction.
@@ -60,11 +61,12 @@ func (s *Store) SaveRun(ctx context.Context, run *ResearchRun) (int64, error) {
 		_, err := tx.ExecContext(ctx,
 			`INSERT INTO research_items
 			 (run_id, title, url, snippet, source, confidence,
-			  freshness_at, lang, raw, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			  freshness_at, lang, raw, created_at, dedup_key)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			runID, item.Title, nullString(item.URL), nullString(item.Snippet),
 			item.Source, item.Confidence, nullString(item.FreshnessAt),
 			nullString(item.Lang), nullString(rawJSON), item.CreatedAt,
+			nullString(item.DedupKey),
 		)
 		if err != nil {
 			return 0, fmt.Errorf("mem: insert item: %w", err)
@@ -408,4 +410,67 @@ type rows = interface {
 	Scan(...any) error
 	Close() error
 	Err() error
+}
+
+// LookupByDedupKeys returns items whose dedup_key is in keys AND whose
+// created_at is ≥ since. Used by research.Router for persistence-aware
+// recall (v0.8.1+). The keys slice can be empty (returns empty); the
+// since filter is applied via parameter (UTC RFC3339).
+//
+// Returns one row per dedup_key (DISTINCT semantics — if the same URL
+// was saved across multiple runs, we return the freshest one). Items
+// are ordered by created_at DESC so the freshest hits come first.
+func (s *Store) LookupByDedupKeys(ctx context.Context, intent string, keys []string, since time.Time) ([]Item, error) {
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	// Build placeholders for the IN clause.
+	placeholders := make([]string, len(keys))
+	args := make([]any, 0, len(keys)+2)
+	args = append(args, since.UTC().Format("2006-01-02T15:04:05Z"))
+	for i, k := range keys {
+		placeholders[i] = "?"
+		args = append(args, k)
+	}
+	q := `
+		SELECT id, run_id, title, url, snippet, source, confidence,
+		       freshness_at, lang, raw, created_at, dedup_key
+		FROM research_items
+		WHERE created_at >= ?
+		  AND dedup_key IN (` + strings.Join(placeholders, ",") + `)
+		  AND dedup_key != ''
+		ORDER BY created_at DESC
+	`
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("mem: lookup by dedup keys: %w", err)
+	}
+	defer rows.Close()
+
+	seen := make(map[string]bool, len(keys))
+	var out []Item
+	for rows.Next() {
+		var it Item
+		var url, snippet, freshnessAt, lang, raw, dedupKey sql.NullString
+		if err := rows.Scan(&it.ID, &it.RunID, &it.Title, &url, &snippet,
+			&it.Source, &it.Confidence, &freshnessAt, &lang, &raw,
+			&it.CreatedAt, &dedupKey); err != nil {
+			return nil, fmt.Errorf("mem: scan lookup row: %w", err)
+		}
+		it.URL = url.String
+		it.Snippet = snippet.String
+		it.FreshnessAt = freshnessAt.String
+		it.Lang = lang.String
+		it.Raw = raw.String
+		it.DedupKey = dedupKey.String
+		if seen[it.DedupKey] {
+			continue
+		}
+		seen[it.DedupKey] = true
+		out = append(out, it)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("mem: iterate lookup rows: %w", err)
+	}
+	return out, nil
 }

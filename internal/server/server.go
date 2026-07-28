@@ -17,11 +17,11 @@ import (
 
 // version is set at link time via:
 //
-//	go build -ldflags "-X main.version=0.8.0" ./cmd/dark-research-mcp
+//	go build -ldflags "-X main.version=0.8.1" ./cmd/dark-research-mcp
 //
-// The default "dev" is what you get from a plain `go build` for local
-// development. CI release builds always set the real version.
-var version = "0.8.0"
+// The default "0.8.1" is what you get from a plain `go build` for local
+// development. CI release builds may override via -ldflags.
+var version = "0.8.1"
 
 // New constructs the MCP server with all registered tools. The
 // mods registry is optional (nil = no mods; the dark_ssd_*
