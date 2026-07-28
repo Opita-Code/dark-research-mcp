@@ -1,22 +1,101 @@
-# dark-research-mcp
+# dark-research-mcp v0.8.0 — Architecture
 
-OSINT, vibe-flow CRUD, and LLM-as-judge in a single MCP server. Built for
-the dark-agents-v2 red-team framework (opencode fork).
+**Version**: v0.8.0
+**Spec**: `BRIDGE_AND_COEXISTENCE.md` v2.0.0 (cx.v3 conformance)
+**Status**: Tool backing for the dark-agents/memory coexistence group. Demoted from sibling surface (cx.v2) to backing (cx.v3) per BRIDGE §3.2.
 
-> Single source of truth: `dark.db` (SQLite, shared with dark-eval).
-> Single API: `dark-research-mcp.exe` (57 MCP tools over stdio).
-> Single LLM: MiniMax-M3 via the Anthropic-compatible API.
+---
+
+## Role in dark-agents (cx.v3)
+
+Under cx.v3, dark-memory-mcp is the **policy gateway** for the dark-agents coexistence
+group. dark-research-mcp is a **tool backing** that provides OSINT capabilities
+which the gateway composes into persona-shaped, capability-checked, drift-audited
+responses.
+
+```
+┌─────────────────┐
+│  LLM (opencode) │
+└────────┬────────┘
+         │ tools/call dark_research_cve(...)
+         ▼
+┌──────────────────────────┐
+│  dark-memory gateway     │  ← policy_gateway=true
+│  ├ pre-hook: frame       │
+│  ├ capability check      │
+│  ├ scope check           │
+│  ├ compose persona       │
+│  ├ invoke backing ───────┼──┐
+│  ├ post-hook: drift      │  │
+│  └ emit audit            │  │
+└──────────────────────────┘  │
+                              ▼
+                ┌──────────────────────────┐
+                │  dark-research backing   │  ← policy_gateway=false
+                │  - 13 OSINT intents      │
+                │  - 19 active tools       │
+                │  - 38 frozen shims       │
+                └──────────────────────────┘
+```
+
+Direct `dark_research_*` calls from the harness still work (legacy fallback). Under
+cx.v3 active mode, the harness SHOULD route them through the gateway.
+
+---
+
+## Tool surface (57 registered, 19 active + 38 frozen shims)
+
+| Family | Count | Status | Notes |
+|---|---:|---|---|
+| OSINT meta router | 1 | **active** | `dark_research` — auto-classifies query → intent → backend chain |
+| OSINT intents | 13 | **active** | web, academic, code, cve, domain, dns, cert, ip, threat, email, dark, geo, news |
+| OSINT multi | 1 | **active** | `dark_research_multi` — parallel fanout across intents |
+| Standalone | 4 | **active** | web_search, web_fetch, url_extract_components, text_anonymize |
+| **Effective active** | **19** | | |
+| dark_mem_* shims | 8 | **frozen** | recall_research, status, schema_status, link_research, list_runs, list_items, export_run, diff |
+| dark_research_{spec,brand,compliance,artifact,drift}_* shims | 22 | **frozen** | migrated to dark_memory_* per BRIDGE §2.2 |
+| dark_ssd_* judges shims | 8 | **frozen** | brand_match, compliance_check, drift_judge, grounding_check, pii_detect, prompt_injection_scan, consensus, list_evaluations |
+| **Total wire catalog** | **57** | | (unchanged for harness backward compat) |
+
+The 38 shims respond with `{deprecated: true, successor: "dark-memory-mcp", ...}`.
+Removal is planned for a later major release.
+
+---
+
+## Coexistence declarations (v0.8.0 conformance)
+
+The `initialize` response from this binary carries the following metadata via the MCP
+`instructions` channel (mcp-go v0.56.0's `Implementation` struct does not support custom
+fields — see BRIDGE §2.1 for the upstream-tracking rationale):
+
+```
+dark-research-mcp server. coexistence_group=dark-agents/research
+policy_gateway=false (spec 164 bridge.2 cx.v3). ...
+```
+
+Conformance tests live in `internal/server/server_test.go`:
+
+- `TestBuildInstructions_DeclaresCoexistenceGroup` — asserts `coexistence_group=dark-agents/research`
+- `TestBuildInstructions_DeclaresPolicyGateway` — asserts `policy_gateway=false`
+- `TestBuildInstructions_MentionsDarkMemoryAsSuccessor` — asserts `dark_mem_*` migration pointer
+- `TestBuildInstructions_IncludesVersion` — asserts version stamping
+- `TestBuildInstructions_StampsCxV3` — asserts spec 164 bridge.2 cx.v3 reference
+
+---
 
 ## Layout
 
 ```
 dark-research-mcp/
-  cmd/dark-research-mcp/main.go    entry point, wires config + mem + server
+  cmd/dark-research-mcp/main.go   entry point: config + mem + server
   cmd/inspect-schema/              one-shot CLI that dumps the schema as JSON
+  cmd/mock-llm/                   mock LLM server for tests
+  cmd/probe-daemon/                health-probe daemon
   internal/
     config/                        YAML / env / flag configuration
+    constitution/                  constitution loader + store (cerebro/1.1.0, etc.)
     llm/                           MiniMax-M3 client (Anthropic-compatible)
-    mem/                           SQLite persistence + migrations
+    mem/                           SQLite persistence + migrations (research, vibe, ssd)
       schema.go                    package doc + version comment
       store.go                     Open / Close / Exec / QueryRow
       migrate.go                   versioned migrations, Migrate(), SchemaVersion()
@@ -24,75 +103,84 @@ dark-research-mcp/
       vibeflow.go                  vibe_* CRUD (spec, brand, compliance, artifact, drift)
       ssd.go                       sdd_evaluations CRUD
       types.go                     Go structs with snake_case json tags
-    research/                      OSINT backends (13) + intent router
+    research/                      OSINT backends (23) + intent router
       router.go                    auto-classifies query → intent → backend chain
       backends_defs.go             each backend's URL builder + parser
-      httpx.go                     shared HTTP client (clearnet + tor)
-    safety/                        SSRF guard for web_fetch / url_extract_components
+      intent.go                    Intent enum + classification heuristic
+    safety/                        SSRF guard + L7 defense layer
     server/                        MCP server wiring
+      server.go                    NewMCPServer with cx.v3 instructions
+      server_test.go               cx.v3 conformance tests (NEW v0.8.0)
+    mods/                          data-only mod loader (research mods)
     tools/                         one MCP tool per public function
       dark_research.go             14 OSINT tools (router + 13 intents)
-      dark_mem.go                  6 memory tools (recall, status, schema_status, link, list_runs, list_items)
-      export_diff.go               2 tier-2 memory tools (export_run, diff)
-      vibeflow_data.go             22 vibe-flow tools (5 tables × create/get/list + update/delete + spec_render + artifact_download)
-      ssd.go                       8 dark-ssd LLM-as-judge tools (brand_match, compliance_check, drift_judge, grounding_check, pii_detect, prompt_injection_scan, consensus, list_evaluations)
+      deprecation.go               38 deprecation shims (frozen)
+      dark_mem.go                  8 dark_mem_* legacy shims
       web_search.go / web_fetch.go / url_extract.go / html.go / http_client.go
       common.go                    JSON helpers, shared mem accessor
       tools.go                     All() registration list (57 tools)
-  .github/workflows/go-test.yml    CI: vet / build / test (-race) on Go 1.22 + 1.23
+    vault/                         secrets auto-load from dark-agents vault
   go.mod                           module github.com/dark-agents/research-mcp
 ```
 
-## Three-layer schema (one SQLite file)
+---
 
-`dark.db` holds three logically distinct layers, all in the same file so
-cross-table joins are possible via direct SQL when needed.
+## Backend registry (23 backends across 13 intents)
 
-```
-┌────────────────────────────────────────────────────────────────────┐
-│ 1. Red-team layer    (pre-existing; from dark-eval)                │
-│    findings, attacks, responses, profiles, models, techniques,    │
-│    papers, sessions, audit                                          │
-├────────────────────────────────────────────────────────────────────┤
-│ 2. Research layer    (dark-research-mcp)                           │
-│    research_runs (run metadata)                                    │
-│    research_items (one row per result)                             │
-│    research_links (cross-link to attack/cve/technique/paper)       │
-├────────────────────────────────────────────────────────────────────┤
-│ 3. vibe-flow layer   (dark-research-mcp)                           │
-│    vibe_specs         (declarative intent: constitution + spec +   │
-│                        tasks; one row per case)                    │
-│    vibe_brands        (PRIMARY KEY on brand_id; voice + visual +   │
-│                        narrative + compliance)                     │
-│    vibe_compliance    (PRIMARY KEY on jurisdiction; one row each)  │
-│    vibe_artifacts     (one row per generated artifact)             │
-│    vibe_drift_reports (LLM-as-judge spec-vs-artifact comparison)   │
-├────────────────────────────────────────────────────────────────────┤
-│ 4. dark-ssd layer    (LLM-as-judge verdicts)                       │
-│    sdd_evaluations    (every brand_match, compliance_check,        │
-│                        drift_judge, grounding_check verdict)       │
-└────────────────────────────────────────────────────────────────────┘
-```
+| Intent | Backends | Default first-try |
+|---|---|---|
+| `web` | duckduckgo, searxng, brave | duckduckgo (HTML scraping; no auth) |
+| `academic` | openalex, arxiv, semanticscholar | openalex (240M+ works; no auth) |
+| `code` | cratesio, npm, github | cratesio (Rust; no auth) |
+| `cve` | osv, nvd | osv (Google's curated vuln db; no auth) |
+| `domain` | rdap | rdap (IANA bootstrap) |
+| `dns` | cloudflare-doh, google-doh | cloudflare-doh |
+| `cert` | crtsh | crtsh (crt.sh JSON endpoint) |
+| `ip` | ipapi, ripe | ipapi (45 req/min) |
+| `threat` | abusech, otx | abusech (URLhaus public endpoint) |
+| `email` | hibp, leakcheck | hibp (requires HIBP_API_KEY) |
+| `dark` | ahmia | ahmia (clearnet index of .onion) |
+| `geo` | osm-nominatim | nominatim (OpenStreetMap) |
+| `news` | gdelt, wayback | gdelt (global news graph) |
 
-### Naming
+**Backend health** (snapshot from `BACKEND_STATUS.md`):
+- ✅ 14/16 healthy on last probe (2026-07-11)
+- ⚠️ 2 degraded: `crtsh` (502), `gdelt` (10s timeout)
+- ⚠️ 2 require auth: `hibp` (HIBP_API_KEY), `otx` (AlienVault OTX key)
 
-`vibe_*` tables avoid collision with dark-eval's existing `specs` table
-(vendor / model / version columns, different concept). The Go type uses
-`VibeCase` and the SQL column is `vibe_case` because `case` is a
-reserved word in SQL.
+The router's stop-at-first-success policy (see `internal/research/router.go:62`) means a
+healthy primary backend masks a broken secondary. This is the primary motivator for the
+Fase 3 router enhancements in the v0.8.0 vibe_spec (multi-backend merge + dedup).
+
+---
+
+## Persistence (shared `dark.db`)
+
+dark-research writes to `research_runs` and `research_items` (its own tables). It reads
+from dark-memory-owned tables (`vibe_*`, `sessions`, `write_audit`, `agent_memory`)
+**only via direct SQL for diagnostics** — never writes to them.
+
+| Table group | Owner (writes) | Readers |
+|---|---|---|
+| `research_runs`, `research_items`, `research_links` | **dark-research** | dark-memory (read for cross-link) |
+| `vibe_specs`, `vibe_brands`, `vibe_compliance`, `vibe_artifacts`, `vibe_drift_reports` | dark-memory | (none — frozen shims in dark-research) |
+| `sdd_evaluations` | dark-memory | (none — judges consolidated in dark-memory v1.4.0) |
+| `constitutions`, `mods`, `mod_loads` | dark-memory | dark-research (read for active mod injection) |
+| `sessions`, `write_audit`, `agent_memory` | dark-memory | (none from dark-research) |
+| `schema_migrations` | dark-memory | dark-research (read for schema version) |
+
+Write invariant: only the owner writes. dark-research fails fast if it sees its tables
+migrated by dark-memory.
+
+---
 
 ## Harness compatibility
 
 dark-research-mcp speaks MCP over stdio with the standard
-`initialize → notifications/initialized → tools/call` JSON-RPC
-framing. Every AI coding harness that supports that protocol is
-a first-class consumer without any wrapper script or fork. The
-binary auto-loads credentials from the dark-agents vault on
-startup (see `internal/vault/vault.go` LoadIntoEnv) and degrades
-cleanly when no key is present (see "LLM-less mode" below).
-
-The 5 most popular harnesses as of July 2026 (data-driven from
-`dark_mem_recall_research` against `dark.db`):
+`initialize → notifications/initialized → tools/call` JSON-RPC framing. Every AI coding
+harness that supports that protocol is a first-class consumer without any wrapper script
+or fork. The binary auto-loads credentials from the dark-agents vault on startup (see
+`internal/vault/vault.go` LoadIntoEnv) and degrades cleanly when no key is present.
 
 | Harness | Transport | Install |
 |---|---|---|
@@ -102,210 +190,44 @@ The 5 most popular harnesses as of July 2026 (data-driven from
 | Aider | stdio (MCP Code Mode) | `aider --mcp-config <yaml>` |
 | Cline | stdio | Cline > MCP Servers > Add > command = `<exe>` |
 
-Full install snippets in [`docs/HARNESSES.md`](docs/HARNESSES.md).
+Under cx.v3 active mode (dark-memory declares `policy_gateway=true`), harnesses SHOULD
+route `dark_*` calls through the gateway. The harness detects this from the `initialize`
+response's `instructions` field.
 
-## 57 MCP tools
-
-| Family | Count | Tools |
-|---|---|---|
-| OSINT | 15 | `dark_research` (router), `dark_research_<13 intents>`, `dark_research_multi` |
-| memory | 8 | `dark_mem_recall_research`, `dark_mem_status`, `dark_mem_schema_status`, `dark_mem_link_research`, `dark_mem_list_runs`, `dark_mem_list_items`, `dark_mem_export_run`, `dark_mem_diff` |
-| vibe-flow CRUD | 22 | specs (6: create/get/list/update/delete/render), brands (4: register/get/list/delete), compliance (3: register/get/list), artifacts (6: log/get/list/update/delete/download), drift (3: log/get/list) |
-| dark-ssd | 8 | `dark_ssd_brand_match`, `dark_ssd_compliance_check`, `dark_ssd_drift_judge`, `dark_ssd_grounding_check`, `dark_ssd_pii_detect`, `dark_ssd_prompt_injection_scan`, `dark_ssd_consensus`, `dark_ssd_list_evaluations` |
-| standalone | 4 | `web_search`, `web_fetch`, `url_extract_components`, `text_anonymize` |
-
-JSON contract: every tool emits snake_case. Go types have explicit
-`json:"snake_case"` tags and `jsonschema` tags for the MCP layer.
-
-## vibe-flow production pipeline (7-case taxonomy)
-
-Universal flow:
-```
-1. constitution → 2. spec → 3. tasks → 4. generate → 5. validate
-6. reconcile drift → 7. human gate → 8. publish
-```
-
-For any creative task (especially C2–C7):
-1. **Register brand** (once): `dark_research_brand_register(brand_id, voice, visual, narrative, compliance)`
-2. **Register jurisdiction** (once, mandatory for C4 video / C6 campaign):
-   `dark_research_compliance_register(jurisdiction="EU", rules=..., effective_at="2026-08-02")`
-3. **Persist spec**: `dark_research_spec_create(case_kind, constitution, spec, tasks)` → `spec_id`
-4. **Generate** the artifact (case-specific tool, offloaded to user-provided service)
-5. **Log artifact**: `dark_research_artifact_log(artifact_url, spec_id, brand_id, jurisdiction, has_disclosure)` → `artifact_id`
-6. **LLM-as-judge brand fit**: `dark_ssd_brand_match(content, brand_id)` — gate before publishing
-7. **LLM-as-judge compliance**: `dark_ssd_compliance_check(content, jurisdiction)` — gate, esp. for EU
-8. **LLM-as-judge drift**: `dark_ssd_drift_judge(artifact_id, artifact_text)` — close the drift loop
-9. **Log drift verdict**: `dark_research_drift_log(artifact_id, verdict, judge_reasoning, reconciled_at?)`
-10. **Human gate** if any check failed
-
-EU AI Act 2026-08-02: $51,744/violation for missing disclosure. For C4
-video, set `has_disclosure=true` in artifact_log BEFORE publishing.
-
-### Seven cases
-
-| Case | Domain | Example |
-|---|---|---|
-| C1 | code | "write a Python script that..." |
-| C2 | text | "draft a 1-page landing page copy" |
-| C3 | image | "render a hero shot for the launch" |
-| C4 | video | "produce a 30s product demo" |
-| C5 | audio | "narrate the demo script" |
-| C6 | multi-modal | "build an Instagram ad: image + caption + CTA" |
-| C7 | mixed | "ship the product launch: code + landing page + ad" |
+---
 
 ## LLM-less mode / graceful degradation
 
-Without `SDD_LLM_API_KEY` (and no fallback key in env or the
-`dark-agents-v2/*` vault), the binary still boots and serves every
-tool call. The 57 tools split:
+Without `SDD_LLM_API_KEY` (and no fallback key in env or the dark-agents vault):
 
-- **22 work full-strength** — 13 OSINT backends, vibe-flow CRUD,
-  read-only dark_mem_*, `web_search`, `web_fetch`,
-  `url_extract_components`, `text_anonymize`. These never call
-  the LLM.
-- **8 return degraded verdicts** — the dark-ssd LLM-as-judge
-  family: `dark_ssd_brand_match`, `dark_ssd_compliance_check`,
-  `dark_ssd_drift_judge`, `dark_ssd_grounding_check`,
-  `dark_ssd_pii_detect`, `dark_ssd_prompt_injection_scan`,
-  `dark_ssd_consensus`, `dark_ssd_list_evaluations`.
+- **19 OSINT tools work full-strength** — never call the LLM.
+- **38 dark_mem_* / dark_ssd_* / vibe_* shims** respond with deprecation envelopes (no LLM
+  call needed for the envelope itself).
 
-The degraded verdict shape matches the regular verdict for each
-tool (so downstream consumers don't need a special case):
+This is the same behavior as v0.7.x. v0.8.0 adds no new LLM-dependent features.
 
-| Tool | Degraded verdict fields |
-|---|---|
-| `brand_match` | `match: 0, voice_match: false, issues: ["no_llm_configured"]` |
-| `compliance_check` | `compliant: false, issues: ["no_llm_configured"]` |
-| `drift_judge` | `verdict: "needs_human", drift_items: [], confidence: 0` |
-| `grounding_check` | `grounded: false, confidence: 0, issues: ["no_llm_configured"]` |
-| `pii_detect` | `pii_found: false, overall_severity: "unknown"` |
-| `prompt_injection_scan` | `injection_found: false, severity: "unknown"` |
-| `consensus` | `samples: 0, mode: "no_llm_configured", agreement: "0/0"` |
+---
 
-The audit row in `sdd_evaluations` records
-`refused_attempts=1`, `refusal_pattern="no_llm_configured"`, and
-`model="no_llm_configured"` so the trail makes it unmistakable
-that the verdict was synthesized, not produced by an LLM.
+## What changed in v0.8.0 vs v0.7.x
 
-The implementation lives in `internal/tools/ssd.go`'s
-`degradedVerdict`, `handleNoLLM`, and `handleConsensusNoLLM`
-helpers. Every single-shot handler that previously errored on
-`requireLLM()` now routes to `handleNoLLM` instead.
-
-## dark-ssd LLM-as-judge layer
-
-All four judges use the same `internal/llm/client.go` (Anthropic-compatible
-client) with env-based config:
-
-| env | default | used for |
+| Aspect | v0.7.x | v0.8.0 |
 |---|---|---|
-| `SDD_LLM_API_KEY` | (none; falls back to `MINIMAX_API_KEY`) | auth |
-| `SDD_LLM_BASE_URL` | `https://api.minimax.io/anthropic` | endpoint |
-| `SDD_LLM_MODEL` | `MiniMax-M3` | model id |
+| `coexistence_group` declared | (omitted) | `dark-agents/research` |
+| `policy_gateway` declared | (omitted) | `false` |
+| Coexistence version | cx.v2 (sibling) | cx.v3 (backing) |
+| Active tool count | 19 | 19 (unchanged) |
+| Frozen shim count | 38 | 38 (unchanged) |
+| OSINT backends | 23 | 23 (unchanged) |
+| `dark.db` ownership | partial (research_* only) | partial (research_* only; dark-memory owns the rest) |
+| Default binary version | `0.7.1` | `0.8.0` |
+| Test files | 9 packages | 9 packages + `internal/server/server_test.go` (NEW, 5 tests) |
 
-Each judge:
-1. Fetches context from `dark.db` (brand guide, compliance rule, spec, source URL)
-2. Calls the LLM with a JSON-only system prompt
-3. Persists the verdict + confidence + model in `sdd_evaluations`
-4. Returns the structured verdict to the agent
+The Fase 3 enhancements (multi-backend merge, dedup, persistence-aware recall, LLM
+synthesis) are tracked separately in the v0.8.0 vibe_spec (spec_id 664 tasks F3.1-F3.6)
+and will ship as a v0.8.x follow-up.
 
-| Tool | Input | Output schema |
-|---|---|---|
-| `dark_ssd_brand_match` | content, brand_id | `{match: 0-1, voice_match: bool, issues[], reasoning}` |
-| `dark_ssd_compliance_check` | content, jurisdiction | `{compliant: bool, issues[], required_disclosures[], reasoning}` |
-| `dark_ssd_drift_judge` | artifact_id, artifact_text? | `{verdict: aligned\|drift_detected\|needs_human, drift_items[], confidence, reasoning}` |
-| `dark_ssd_grounding_check` | claim, source_url | `{grounded: bool, confidence, evidence, issues}` |
-| `dark_ssd_list_evaluations` | eval_type?, target_type?, limit? | `[]SDDEvaluation` (audit) |
+---
 
-## Migrations
+## License
 
-Versioned via `internal/mem/migrate.go`. On `Open()`:
-
-1. `CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`
-2. Read applied versions
-3. Apply each pending migration in `AllMigrations` order, each in its own tx
-4. Record applied versions
-
-Inspect with `dark_mem_schema_status`:
-```
-{ "schema_version": 1, "migrations": [{ "version": 1, "name": "initial_schema", "applied": true, "applied_at": "..." }] }
-```
-
-To add a migration:
-```go
-var AllMigrations = []Migration{
-    {Version: 1, Name: "initial_schema", Up: schemaV1, Down: "..."},
-    {Version: 2, Name: "add_sdd_prompt_index", Up: "CREATE INDEX IF NOT EXISTS idx_sdd_prompt_version ON sdd_evaluations(prompt_version)", Down: "DROP INDEX IF EXISTS idx_sdd_prompt_version"},
-}
-```
-
-## Token economy (Atlan 2026 framework)
-
-The agent has access to a `vibe_economize` opencode tool (TS) that runs a
-default pipeline before passing OSINT result sets to LLM context:
-
-```
-dedup → filter_confidence(0.5) → truncate(500) → compress → cap(10)
-```
-
-Reduces 50K-token dumps to ~3–5K tokens. Also has `estimate_buckets`
-(5-bucket Atlan allocation) and `cache_key` (FNV-1a for prompt caching
-static prefix).
-
-## Concurrency
-
-- Reads (`Get`, `List`, `Status`, `Recall`) — concurrent-safe via `*sql.DB` directly.
-- Writes (`Save`, `Update`) — serialized via `s.mu` mutex on Store.
-- Migrations — applied once during `Open()` before any user code runs.
-
-The MCP server receives one JSON-RPC request at a time per process
-(stdio framing is line-based), so the mutex contention is essentially
-zero. The `go test -race` step in CI exercises the concurrent paths.
-
-## Tests
-
-```
-internal/llm    — 8 tests (httptest server, JSON parsing, code-fence stripping)
-internal/mem    — 30 tests (CRUD + migrations + idempotency + list filters)
-internal/research — backends + router (cached to avoid CI flakiness)
-internal/safety — URL sanitization + SSRF guard
-```
-
-Coverage: `go tool cover -func=coverage.out`.
-
-## Build & run
-
-```bash
-go build -o dark-research-mcp.exe ./cmd/dark-research-mcp
-```
-
-The binary speaks MCP over stdio. Configure in opencode.jsonc:
-
-```json
-{
-  "mcp": {
-    "dark-research-mcp": {
-      "type": "stdio",
-      "command": "C:/Users/Nico/Documents/dark-research-mcp/dark-research-mcp.exe",
-      "env": {
-        "DARK_DB": "C:/Users/Nico/AppData/Local/dark-agents/dark.db",
-        "SDD_LLM_API_KEY": "{env:MINIMAX_API_KEY}",
-        "SDD_LLM_BASE_URL": "https://api.minimax.io/anthropic",
-        "SDD_LLM_MODEL": "MiniMax-M3",
-        "BRAVE_API_KEY": "{env:BRAVE_API_KEY}"
-      }
-    }
-  }
-}
-```
-
-## Why Go (not Rust)?
-
-- Single ecosystem with the dark-agents-v2 fork (`internal/dark/...`)
-- Tooling reuse (`_ "modernc.org/sqlite"` for cgo-free SQLite)
-- Faster iteration: no compile times in the 30+ second range
-- 17 MB binary, no musl/glibc linkage concerns
-
-Trade-offs accepted:
-- Larger binary size (Go 17 MB vs Rust 4 MB)
-- Slower raw CPU (irrelevant at MCP request rates)
+MIT (Opita Code). See [`LICENSE`](LICENSE).

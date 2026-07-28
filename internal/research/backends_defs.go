@@ -175,6 +175,7 @@ func certBackends() []Backend {
 				return "https://crt.sh/?q=" + url.QueryEscape(q) + "&output=json"
 			},
 			RateLimitMs: 1000,
+			Retries:     3, // crt.sh has been returning 502 frequently; retry transiently
 			Parse:       parseCrtsh,
 		},
 	}

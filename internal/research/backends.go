@@ -49,6 +49,12 @@ type Backend struct {
 	// RateLimitMs is the minimum interval between calls per process.
 	RateLimitMs int
 
+	// Retries is the number of retry attempts on transient failures
+	// (5xx, network errors). 0 (default) = no retries. Retries use
+	// exponential backoff: 1s, 2s, 4s, ... 4xx errors are NOT
+	// retried (client error, won't change on retry).
+	Retries int
+
 	// Parse converts a backend-specific response body into normalized
 	// Result items. The router calls this after each successful fetch.
 	Parse func(body []byte) ([]Item, error)
@@ -66,6 +72,13 @@ type Item struct {
 	Confidence  float32        `json:"confidence"`
 	Lang        string         `json:"lang,omitempty"`
 	Raw         map[string]any `json:"raw,omitempty"`
+
+	// DedupKey is the SHA-256 hex of CanonicalizeURL(URL). Computed
+	// by the router on parse; empty when the item was constructed
+	// directly (e.g. by tests). Used by DedupItems for cross-backend
+	// merge; persistence-aware recall (v0.8.x) will use it for
+	// cross-run cache lookup.
+	DedupKey string `json:"dedup_key,omitempty"`
 }
 
 // Result is what the router returns to the caller.

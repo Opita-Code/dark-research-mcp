@@ -1,64 +1,208 @@
-# dark-research-mcp (clean install at C:\Users\Nico\dark-research-mcp)
+# dark-research-mcp v0.8.0 — OSINT backing for the dark-agents ecosystem
 
-Clean, single-binary MCP server for OSINT + vibe-flow CRUD + LLM-as-judge, wired
-into OpenCode 1.18.1 with a custom primary agent `dark-research` and a read-only
-OSINT subagent `scour`.
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│   ██████╗  ██████╗██████╗ ██████╗     ███╗   ███╗ ██████╗██████╗             │
+│  ██╔═══██╗██╔════╝██╔══██╗██╔══██╗    ████╗ ████║██╔════╝██╔══██╗            │
+│  ██║   ██╗██║     ██║  ██║██████╔╝    ██╔████╔██║██║     ██████╔╝            │
+│  ██║   ██║██║     ██║  ██║██╔══██╗    ██║╚██╔╝██║██║     ██╔═══╝             │
+│  ╚██████╔╝╚██████╗██████╔╝██║  ██║    ██║ ╚═╝ ██║╚██████╗██║                 │
+│   ╚═════╝  ╚═════╝╚═════╝ ╚═╝  ╚═╝    ╚═╝     ╚═╝ ╚═════╝╚═╝                 │
+│                                                                              │
+│                       Opita Code Dark Research MCP v0.8.0                    │
+│                                                                              │
+│          OSINT backing • 13 intents • cx.v3 conformance • MIT                │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
 
-This directory is intentionally isolated from `C:\Users\Nico\Documents\dark-research-mcp\`,
-which contains prototype artifacts (dark-recall, probe-daemon, vibe-studio-prototype,
-embed-setup, dark-mem honeycomb, etc.) that were discarded. Those artifacts are
-NOT referenced from any opencode config and are NOT loaded by this MCP.
+**El servidor MCP de OSINT que trabaja detrás del gateway dark-memory.**
 
-## Layout
+[![MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Go 1.25+](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](go.mod)
+[![Version](https://img.shields.io/badge/version-0.8.0-blue)](RELEASE_NOTES_v0.8.0.md)
+[![Coexistence](https://img.shields.io/badge/cx.v3-dark--agents%2Fresearch-blueviolet)](https://github.com/Opita-Code/dark-memory-mcp/blob/main/vibe-flow/main/BRIDGE_AND_COEXISTENCE.md)
+[![Backing](https://img.shields.io/badge/policy_gateway-false-lightgrey)](https://github.com/Opita-Code/dark-memory-mcp/blob/main/vibe-flow/main/BRIDGE_AND_COEXISTENCE.md)
 
-    C:\Users\Nico\dark-research-mcp\
-    +-- dark-research-mcp.exe         # binary, v0.5.0 base + feat/vault-autoload + cherry-pick ffb6041
-    +-- opencode-with-vault.ps1       # launcher: loads vault then execs opencode
-    +-- oc.bat                        # shim: invoke as `oc` from any shell
-    +-- README.md                     # this file
-    +-- internal/                     # source (Go)
-    +-- cmd/                          # command entry points (source)
-    +-- ...
+[¿Qué hace?](#qué-hace) · [Arquitectura](#arquitectura-cx.v3) · [Quickstart](#quickstart) · [Specs](#specs) · [Migración](#migración-desde-v0.7.x)
 
-## Launching
+---
 
-Default (vault loaded, dark-research agent as default):
-    oc
-    # equivalent to: pwsh -File C:\Users\Nico\dark-research-mcp\opencode-with-vault.ps1
+## ¿Qué hace?
 
-Use the OSINT subagent:
-    oc --agent scour
+**dark-research-mcp** es un servidor MCP escrito en Go que entrega a tu agente IA
+**19 herramientas de OSINT** activas (1 router + 13 intents + 1 multi + 4 standalone),
+más 38 shims `dark_mem_*` congelados que apuntan al gateway dark-memory.
 
-Verify MCP connectivity inside an opencode session:
-    > /mcp
-    dark-research  C:/Users\Nico\dark-research-mcp/dark-research-mcp.exe   connected
+**v0.8.0 = conformance cx.v3.** El cambio es metadata-only: el binario ahora declara
+`coexistence_group=dark-agents/research` y `policy_gateway=false`, según
+`BRIDGE_AND_COEXISTENCE.md` v2.0.0 §3.2. Las 19 herramientas activas funcionan idéntico
+que en v0.7.x.
 
-## How it routes LLM calls (R9 fallback rule)
+### 13 intents OSINT
 
-The MCP binary, when started with MINIMAX_API_KEY / SDD_LLM_API_KEY in env, calls
-https://api.minimax.io/anthropic directly. When started WITHOUT these keys but with
-DARK_SCRAPPER_URL set, it falls back to the dark-scrapper daemon on 127.0.0.1:8901.
-On this clean install that daemon is NOT running, so all LLM-backed dark_ssd_*
-calls would fail with "connection refused" if the vault is not loaded.
+| Intent | Backends | Caso de uso |
+|---|---|---|
+| `web` | DuckDuckGo HTML → SearXNG → Brave | blog posts, news, landing pages |
+| `academic` | OpenAlex → arXiv → Semantic Scholar | papers peer-reviewed, preprints, DOIs |
+| `code` | crates.io → npm → GitHub | library discovery, GitHub repos |
+| `cve` | OSV.dev → NVD | vulnerabilidades con CVSS |
+| `domain` | RDAP | WHOIS / handles / registrar |
+| `dns` | Cloudflare DoH → Google DoH | A/AAAA/MX/TXT records |
+| `cert` | crt.sh | cert transparency log |
+| `ip` | ip-api.com → RIPE stat | geolocation + ASN |
+| `threat` | URLhaus → AlienVault OTX | known-bad URLs/malware |
+| `email` | HIBP / LeakCheck | breach lookups |
+| `dark` | Ahmia.fi (.onion index) | dark web search |
+| `geo` | OpenStreetMap Nominatim | geocoding |
+| `news` | GDELT → Wayback CDX | news articles + archived pages |
 
-`oc.bat` and `opencode-with-vault.ps1` ensure the vault is loaded BEFORE opencode
-spawns the MCP server, so secrets flow down via process inheritance. Never invoke
-`opencode` directly without the vault wrapper if you want dark_ssd_* judges to work.
+Plus `dark_research_multi` (parallel fanout across intents), `web_search`,
+`web_fetch`, `url_extract_components`, `text_anonymize`.
 
-## Building from source
+---
 
-Requires Go 1.25+.
+## Arquitectura cx.v3
 
-    git clone --branch feat/vault-autoload https://github.com/Opita-Code/dark-research-mcp.git .
-    git cherry-pick ffb6041    # feat(llm): detect parent harness via env-var markers
-    go build -o dark-research-mcp.exe ./cmd/dark-research-mcp
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                          opencode (harness)                            │
+│                                                                        │
+│   - Detecta policy_gateway=true en dark-memory                         │
+│   - Detecta policy_gateway=false en dark-research                      │
+│   - Enruta dark_* calls a través del gateway                           │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                    ┌───────────────┴───────────────┐
+                    ▼                               ▼
+       ┌────────────────────────┐      ┌────────────────────────┐
+       │   dark-memory-mcp      │      │   dark-research-mcp    │
+       │                        │      │                        │
+       │ policy_gateway=true    │      │ policy_gateway=false   │
+       │ coexistence_group=     │      │ coexistence_group=     │
+       │   dark-agents/memory   │      │   dark-agents/research │
+       │                        │      │                        │
+       │   - vibe-loop          │      │   - 13 OSINT intents   │
+       │   - agent_memory       │ ────▶│   - multi-backend      │
+       │   - drift_judge        │      │     merge + dedup      │
+       │   - session lifecycle  │      │   - persistence-aware  │
+       │   - 34 canonical tools │      │     recall             │
+       └────────────────────────┘      │   - 19 active tools    │
+                                        └────────────────────────┘
+```
 
-## Provenance
+**El gateway (dark-memory) dicta el vibe-loop, el contexto, y los patrones.** dark-research
+sirve como **backing** que provee capacidades OSINT cuando el gateway las compone para
+responder al LLM. Ver [BRIDGE_AND_COEXISTENCE.md v2](https://github.com/Opita-Code/dark-memory-mcp/blob/main/vibe-flow/main/BRIDGE_AND_COEXISTENCE.md) §3 para el contrato completo.
 
-    v0.5.0 (tag)               <- upstream Opita-Code/dark-research-mcp
-    feat/vault-autoload branch <- upstream pre-v0.6.0 candidate
-    ffb6041 cherry-pick        <- upstream dark-agents/v0.6.0-fork (Nico local)
+### Persistencia compartida
 
-## License
+Ambos servidores escriben al mismo `dark.db` (SQLite), en tablas distintas:
 
-MIT (Opita Code). See LICENSE in the upstream repo.
+| Tabla | Owner | Uso |
+|---|---|---|
+| `research_runs`, `research_items` | dark-research (escribe) | dark-memory (lee para cross-link) |
+| `vibe_specs`, `vibe_brands`, `vibe_compliance`, `vibe_artifacts`, `vibe_drift_reports` | dark-memory | dark-research (no lee; legacy shims) |
+| `sessions`, `write_audit`, `agent_memory` | dark-memory | dark-research (no escribe) |
+| `schema_migrations` | dark-memory (autoridad) | dark-research (read-only) |
+
+---
+
+## Quickstart
+
+```bash
+# 1. Compila
+go build -ldflags "-X main.version=0.8.0" -o dark-research-mcp.exe ./cmd/dark-research-mcp
+
+# 2. Configura el DB (compartido con dark-memory)
+export DARK_DB="$LOCALAPPDATA/dark-agents/dark.db"
+
+# 3. Primera consulta
+./dark-research-mcp.exe <<'EOF'
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"hi","version":"0"}}}
+{"jsonrpc":"2.0","method":"notifications/initialized"}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"dark_research_cve","arguments":{"query":"CVE-2024-3094"}}}
+EOF
+```
+
+Salida esperada:
+```json
+{
+  "items": [{
+    "title": "CVE-2024-3094",
+    "url": "https://osv.dev/vulnerability/CVE-2024-3094",
+    "snippet": "xz backdoor — malicious code in liblzma…",
+    "source": "osv",
+    "confidence": 0.95
+  }],
+  "backend_used": "osv",
+  "took_ms": 250
+}
+```
+
+Compatible con OpenCode, Claude Code, Cursor, Aider, Cline — todos los harnesses MCP-nativos.
+
+---
+
+## Specs
+
+- **Normativo**: [`BRIDGE_AND_COEXISTENCE.md`](https://github.com/Opita-Code/dark-memory-mcp/blob/main/vibe-flow/main/BRIDGE_AND_COEXISTENCE.md) v2.0.0 (dark-memory-mcp repo)
+- **Drift report**: [`DRIFT_BURST.md`](https://github.com/Opita-Code/dark-memory-mcp/blob/main/vibe-flow/main/DRIFT_BURST.md)
+- **Release notes v0.8.0**: [`RELEASE_NOTES_v0.8.0.md`](RELEASE_NOTES_v0.8.0.md)
+- **Histórico**: [`RELEASE_NOTES_v0.7.1.md`](RELEASE_NOTES_v0.7.1.md), [`RELEASE_NOTES_v0.7.0.md`](RELEASE_NOTES_v0.7.0.md)
+
+---
+
+## Migración desde v0.7.x
+
+**Cambio breaking (metadata-only).** v0.8.0 cambia el `coexistence_group` declarado en el
+`initialize` response:
+
+| Versión | `coexistence_group` | `policy_gateway` |
+|---|---|---|
+| v0.7.x | (omitido, o `dark-agents/memory` legacy) | (omitido) |
+| v0.8.0 | **`dark-agents/research`** | **`false`** |
+
+**Si tu harness inspecciona `coexistence_group`**:
+- Actualiza el valor esperado de `dark-agents/memory` → `dark-agents/research`.
+- Si tu harness hardcoded el viejo valor, va a entrar en cx.v2 legacy fallback mode
+  (BRIDGE §5.4 test 7) — degrada gracefully pero pierdes el gateway routing.
+
+**Si tu harness NO inspecciona `coexistence_group`**: zero migration cost. Las 19
+herramientas activas funcionan idéntico.
+
+### Para actualizar
+
+```bash
+git pull
+go build -ldflags "-X main.version=0.8.0" -o dark-research-mcp.exe ./cmd/dark-research-mcp
+# Windows: reemplaza el .exe y reinicia opencode (inode lock)
+```
+
+### Timeline
+
+| Fecha | Estado |
+|---|---|
+| 2026-07-19 | BRIDGE v2 publicado; cx.v3 effective |
+| **2026-07-27** | **dark-research v0.8.0 ships cx.v3 metadata** |
+| 2026-08-XX | dark-memory v2.1.3+ ships `policy_gateway=true` en paralelo |
+| 2026-09-30 | Último día cx.v1/v2 dual-support |
+| 2026-10-01 | cx.v1/v2 deprecated; harness logs warning si ve legacy metadata |
+
+---
+
+## Estado del binario
+
+| Asset | Valor |
+|---|---|
+| Tag | v0.8.0 |
+| Commit | (pending — ver RELEASE_NOTES_v0.8.0.md) |
+| Branch | `main` |
+| Binary size | ~17 MB |
+| Coexistence | `cx.v3` (research backing) |
+| Spec compliance | BRIDGE v2.0.0 §3.2 |
+
+## Licencia
+
+MIT (Opita Code). Ver [`LICENSE`](LICENSE).

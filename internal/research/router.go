@@ -1,3 +1,7 @@
+// Package research orchestrates a query against the backend registry.
+//
+// v0.8.0: stop-at-first-success is replaced by multi-backend merge +
+// cross-backend dedup. See Route() for the new algorithm.
 package research
 
 import (
@@ -20,7 +24,7 @@ var Getenv = os.Getenv
 
 // Version is stamped into the User-Agent on every outbound request.
 // Defaults to "dev"; the release build sets it via -ldflags
-// "-X github.com/dark-agents/research-mcp/internal/research.Version=0.3.1".
+// "-X github.com/dark-agents/research-mcp/internal/research.Version=0.8.0".
 // Backends that fingerprint by user-agent see one consistent string
 // per binary.
 var Version = "dev"
@@ -40,6 +44,17 @@ type Router struct {
 	rateMu  sync.Mutex           // guards lastHit (concurrent Route() calls)
 	mem     MemSink              // optional; nil = no persistence
 	session string               // session id stamped on saved runs
+
+	// MaxBackends caps how many backends are tried per Route() call.
+	// 0 (zero value) means "all backends for the intent". Useful for
+	// callers that want a quick-first-answer behavior even though the
+	// router would normally merge across all backends.
+	MaxBackends int
+
+	// MaxItems caps the number of items returned after dedup.
+	// 0 (zero value) defaults to 20. Callers can set higher (e.g.
+	// dark_research_multi) or lower (e.g. a quick-preview tool).
+	MaxItems int
 }
 
 // NewRouter builds a router with the given registry.
@@ -47,7 +62,7 @@ func NewRouter(reg *Registry, hc *http.Client) *Router {
 	if hc == nil {
 		hc = &http.Client{Timeout: 30 * time.Second}
 	}
-	return &Router{reg: reg, http: hc, lastHit: map[string]time.Time{}}
+	return &Router{reg: reg, http: hc, lastHit: map[string]time.Time{}, MaxItems: 20}
 }
 
 // SetMem wires a MemSink so successful runs get persisted.
@@ -57,8 +72,24 @@ func (r *Router) SetMem(m MemSink) { r.mem = m }
 // SetSession stamps a session id on subsequent persisted runs.
 func (r *Router) SetSession(s string) { r.session = s }
 
-// Route runs a query against the appropriate intent's backends.
-// Tries each backend in weight order until one succeeds or all fail.
+// Route runs a query against the appropriate intent's backends,
+// merges results across multiple backends, and deduplicates by
+// canonical URL.
+//
+// v0.8.0 behavior (changed from v0.7.x):
+//
+//   - Iterate all (or up to MaxBackends) backends for the intent.
+//   - Each successful backend contributes its items; failed backends
+//     record an error but don't abort.
+//   - All collected items are merged via DedupItems (see dedup.go).
+//   - Confidence is preserved as max() across corroborating sources;
+//     Source field shows "backend1+backend2" when corroborated.
+//   - Result is capped to MaxItems (default 20).
+//   - BackendUsed is the first successful backend (for audit); the
+//     other contributors show in BackendsTried.
+//
+// Stop-at-first-success is gone — every reachable backend is queried.
+// Set MaxBackends=1 to restore the legacy behavior.
 func (r *Router) Route(ctx context.Context, query string, intentHint Intent) (*Result, error) {
 	intent := intentHint
 	if intent == "" {
@@ -76,7 +107,20 @@ func (r *Router) Route(ctx context.Context, query string, intentHint Intent) (*R
 		return nil, fmt.Errorf("no backends registered for intent %q", intent)
 	}
 
-	for _, b := range backends {
+	maxB := r.MaxBackends
+	if maxB <= 0 || maxB > len(backends) {
+		maxB = len(backends)
+	}
+
+	// Per-backend result buckets. We collect everything then merge
+	// via DedupItems. Buckets preserve backend order so the first
+	// non-empty bucket wins Title/Snippet on ties.
+	buckets := make([][]Item, 0, len(backends))
+	now := time.Now().UTC()
+	for i, b := range backends {
+		if i >= maxB {
+			break
+		}
 		if b.Auth != "" && Getenv(b.Auth) == "" {
 			res.Errors = append(res.Errors, BackendError{Backend: b.Name, Err: "missing auth env " + b.Auth})
 			continue
@@ -129,9 +173,8 @@ func (r *Router) Route(ctx context.Context, query string, intentHint Intent) (*R
 			continue
 		}
 
-		// Stamp fetched_at and confidence on every item so the LLM
-		// knows provenance + trust level.
-		now := time.Now().UTC()
+		// Stamp fetched_at, source, confidence, lang, and dedup_key
+		// on every item so downstream consumers see provenance.
 		for i := range items {
 			if items[i].FetchedAt.IsZero() {
 				items[i].FetchedAt = now
@@ -145,20 +188,32 @@ func (r *Router) Route(ctx context.Context, query string, intentHint Intent) (*R
 			if items[i].Lang == "" {
 				items[i].Lang = b.LangHint
 			}
+			items[i].DedupKey = DedupKey(items[i].URL)
 		}
 
-		res.BackendUsed = b.Name
-		res.Items = items
-		res.Took = time.Since(started)
-		r.persist(ctx, query, intent, res)
-		return res, nil
+		if res.BackendUsed == "" && len(items) > 0 {
+			res.BackendUsed = b.Name
+		}
+		buckets = append(buckets, items)
 	}
 
-	res.Took = time.Since(started)
-	if len(res.Errors) == 0 {
-		return res, fmt.Errorf("no backends succeeded for intent %q", intent)
+	// Merge + dedup across buckets.
+	merged := DedupItems(buckets...)
+	if r.MaxItems > 0 && len(merged) > r.MaxItems {
+		merged = merged[:r.MaxItems]
 	}
-	return res, fmt.Errorf("all backends failed for intent %q", intent)
+	res.Items = merged
+	res.Took = time.Since(started)
+
+	if len(merged) == 0 {
+		if len(res.Errors) == 0 {
+			return res, fmt.Errorf("no backends succeeded for intent %q", intent)
+		}
+		return res, fmt.Errorf("all backends failed for intent %q", intent)
+	}
+
+	r.persist(ctx, query, intent, res)
+	return res, nil
 }
 
 // persist writes the run to the configured MemSink, if any. Errors
@@ -208,7 +263,11 @@ func (r *Router) persist(ctx context.Context, query string, intent Intent, res *
 	}
 }
 
-// call performs the HTTP request and returns the body.
+// call performs the HTTP request and returns the body. Transient
+// failures (5xx, network errors) are retried with exponential backoff
+// per the backend's Retries field (default 0 = no retries). 4xx
+// errors are returned immediately since the client request won't
+// change on retry.
 func (r *Router) call(ctx context.Context, b Backend, query string) ([]byte, error) {
 	method := b.Method
 	if method == "" {
@@ -255,18 +314,61 @@ func (r *Router) call(ctx context.Context, b Backend, query string) ([]byte, err
 		}
 	}
 
-	resp, err := r.http.Do(req)
+	// Retry policy: backends with Retries>0 retry on 5xx / network
+	// errors with exponential backoff (1s, 2s, 4s, ...). 4xx is
+	// returned immediately (client error, won't change on retry).
+	maxAttempts := b.Retries + 1
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		body, status, err := r.callOnce(ctx, req)
+		if err == nil && status >= 200 && status < 300 {
+			return body, nil
+		}
+		// Build the error.
+		if err != nil {
+			lastErr = err
+		} else {
+			lastErr = fmt.Errorf("http %d", status)
+		}
+		// Don't retry 4xx.
+		if status >= 400 && status < 500 {
+			break
+		}
+		// Don't sleep after the last attempt.
+		if attempt == maxAttempts {
+			break
+		}
+		// Exponential backoff: 1s, 2s, 4s, ...
+		backoff := time.Duration(1<<(attempt-1)) * time.Second
+		select {
+		case <-time.After(backoff):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return nil, lastErr
+}
+
+// callOnce performs a single HTTP request and returns (body, status, err).
+func (r *Router) callOnce(ctx context.Context, req *http.Request) ([]byte, int, error) {
+	// Each attempt needs its own Request because http.Request bodies are consumed.
+	attemptReq := req.Clone(ctx)
+	attemptReq.Header = req.Header.Clone()
+	resp, err := r.http.Do(attemptReq)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// Read up to 4KB of body for diagnostics.
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, resp.StatusCode, fmt.Errorf("http %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	// Cap at 5 MB to avoid OOM on accidental huge responses.
-	return io.ReadAll(io.LimitReader(resp.Body, 5*1024*1024))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 5*1024*1024))
+	return body, resp.StatusCode, err
 }
