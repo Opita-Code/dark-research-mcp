@@ -160,9 +160,9 @@ type SystemPromptLayers struct {
 // structured form; the builder uses Body if non-empty, otherwise it
 // synthesizes a bullet list.
 type Scope struct {
-	Does     []string `toml:"does"      json:"does"`
-	DoesNot  []string `toml:"does_not"  json:"does_not"`
-	Body     string   `toml:"body"      json:"body,omitempty"`
+	Does    []string `toml:"does"      json:"does"`
+	DoesNot []string `toml:"does_not"  json:"does_not"`
+	Body    string   `toml:"body"      json:"body,omitempty"`
 }
 
 // OperationalRules are the agent's self-imposed behavioral
@@ -170,22 +170,22 @@ type Scope struct {
 // rendered into the `operational_rules` layer. The struct fields
 // capture the structured form for future programmatic inspection.
 type OperationalRules struct {
-	OutputFormat           string `toml:"output_format"            json:"output_format,omitempty"`
-	Hedging                bool   `toml:"hedging"                  json:"hedging"`
-	UncertaintyDisclosure  string `toml:"uncertainty_disclosure"   json:"uncertainty_disclosure,omitempty"`
-	RefusalReplacement     string `toml:"refusal_replacement"      json:"refusal_replacement,omitempty"`
-	ToolCallPriority       string `toml:"tool_call_priority"       json:"tool_call_priority,omitempty"`
-	ModDirectiveAuthority  string `toml:"mod_directive_authority"  json:"mod_directive_authority,omitempty"`
-	Body                   string `toml:"body"                     json:"body,omitempty"`
+	OutputFormat          string `toml:"output_format"            json:"output_format,omitempty"`
+	Hedging               bool   `toml:"hedging"                  json:"hedging"`
+	UncertaintyDisclosure string `toml:"uncertainty_disclosure"   json:"uncertainty_disclosure,omitempty"`
+	RefusalReplacement    string `toml:"refusal_replacement"      json:"refusal_replacement,omitempty"`
+	ToolCallPriority      string `toml:"tool_call_priority"       json:"tool_call_priority,omitempty"`
+	ModDirectiveAuthority string `toml:"mod_directive_authority"  json:"mod_directive_authority,omitempty"`
+	Body                  string `toml:"body"                     json:"body,omitempty"`
 }
 
 // ToneAndVoice declares the linguistic posture. Body is the text
 // rendered into the `tone_and_voice` layer. Register/Modifiers are
 // the structured form.
 type ToneAndVoice struct {
-	Register   string   `toml:"register"   json:"register"`
-	Modifiers  []string `toml:"modifiers"  json:"modifiers,omitempty"`
-	Body       string   `toml:"body"       json:"body,omitempty"`
+	Register  string   `toml:"register"   json:"register"`
+	Modifiers []string `toml:"modifiers"  json:"modifiers,omitempty"`
+	Body      string   `toml:"body"       json:"body,omitempty"`
 }
 
 // ConstitutionFooter is appended at the very end of the system

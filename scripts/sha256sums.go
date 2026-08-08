@@ -2,7 +2,7 @@
 // SHA256SUMS.txt itself), computes its SHA-256, and writes a sorted
 // `dist/SHA256SUMS.txt` in the standard `sha256sum -a 256` format:
 //
-//   <hex-digest>  <filename>\n
+//	<hex-digest>  <filename>\n
 //
 // Used by the release workflow (see ../.github/workflows/go-test.yml
 // and the cross-platform build script in the parent directory's
@@ -11,7 +11,7 @@
 //
 // Usage:
 //
-//   go run scripts/sha256sums.go
+//	go run scripts/sha256sums.go
 //
 // Reads from ./dist, writes to ./dist/SHA256SUMS.txt.
 package main

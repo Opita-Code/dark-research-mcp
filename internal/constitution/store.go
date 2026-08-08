@@ -26,16 +26,16 @@ import (
 // ToConstitution() to recover the runtime form, or
 // FromConstitution() to construct a Row from a fresh load.
 type ConstitutionRow struct {
-	ID           string
-	Version      string
-	Label        string // empty = NULL in DB
-	Source       string
-	FilePath     string
-	ParsedJSON   string
-	SHA256       string
-	Enabled      bool
-	CreatedAt    string // RFC3339Nano; populated by DB on insert
-	ActivatedAt  string // RFC3339Nano; empty if never activated
+	ID          string
+	Version     string
+	Label       string // empty = NULL in DB
+	Source      string
+	FilePath    string
+	ParsedJSON  string
+	SHA256      string
+	Enabled     bool
+	CreatedAt   string // RFC3339Nano; populated by DB on insert
+	ActivatedAt string // RFC3339Nano; empty if never activated
 }
 
 // ToConstitution converts the persisted Row to the in-memory

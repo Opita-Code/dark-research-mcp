@@ -22,20 +22,22 @@ import (
 	"github.com/dark-agents/research-mcp/internal/llm"
 	"github.com/dark-agents/research-mcp/internal/mem"
 	"github.com/dark-agents/research-mcp/internal/mods"
-	"github.com/dark-agents/research-mcp/internal/research"
 	"github.com/dark-agents/research-mcp/internal/safety"
 	darkserver "github.com/dark-agents/research-mcp/internal/server"
 	"github.com/dark-agents/research-mcp/internal/tools"
 	"github.com/dark-agents/research-mcp/internal/vault"
+	versionpkg "github.com/dark-agents/research-mcp/internal/version"
 )
 
-// version is set at link time via:
+// Version is resolved at runtime from internal/version. The release
+// build (`make release`) injects the canonical git tag via -ldflags:
 //
-//	go build -ldflags "-X main.version=0.8.0" ./cmd/dark-research-mcp
+//	go build -ldflags "-X github.com/dark-agents/research-mcp/internal/version.buildVersion=0.9.0" ./cmd/dark-research-mcp
 //
-// The default "0.8.0" is what you get from a plain `go build` for local
-// development. CI release builds may override via -ldflags.
-var version = "0.8.0"
+// A plain `go build` falls back to "dev" (or the module version from
+// `go install`). The old hardcoded `var version` anti-pattern (which
+// drifted from the git tag) is gone — version is now single-sourced.
+var version = versionpkg.Resolve().Version
 
 func main() {
 	cfgPath := flag.String("config", "", "path to config file (default: $DARK_RESEARCH_CONFIG or ./dark-research.toml)")
@@ -52,9 +54,6 @@ func main() {
 		fmt.Printf("dark-research-mcp %s\n", version)
 		os.Exit(0)
 	}
-
-	// Stamp the research User-Agent with our build version.
-	research.Version = version
 
 	log.SetOutput(os.Stderr)
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
@@ -187,9 +186,9 @@ func main() {
 
 // initConstitution resolves and activates the constitution chosen by
 // the user. The precedence order is:
-//   1. --constitution flag (passed in as flag)
-//   2. DARK_CONSTITUTION env var
-//   3. light default (built-in)
+//  1. --constitution flag (passed in as flag)
+//  2. DARK_CONSTITUTION env var
+//  3. light default (built-in)
 //
 // On error, we fail loud and exit non-zero. A user who explicitly
 // asked for "dark" on a stock build should see the error, not a
@@ -205,10 +204,10 @@ func initConstitution(flagSpec string) error {
 
 // initMods activates the mods the user wants at startup. The
 // precedence order is:
-//   1. --mods flag (comma-separated mod_ids)
-//   2. DARK_MODS env var (comma-separated)
-//   3. ~/.dark-research/mods/active.toml (one mod_id per line)
-//   4. Mods with auto_load = true in their mod.toml
+//  1. --mods flag (comma-separated mod_ids)
+//  2. DARK_MODS env var (comma-separated)
+//  3. ~/.dark-research/mods/active.toml (one mod_id per line)
+//  4. Mods with auto_load = true in their mod.toml
 //
 // Steps 1, 2, 3 are explicit user intent. Step 4 is opt-in
 // convenience. We collect the union and activate each; load

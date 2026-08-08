@@ -45,12 +45,12 @@ type CacheEntry struct {
 
 // CacheStats reports aggregate metrics.
 type CacheStats struct {
-	Hits       int    `json:"hits"`
-	Misses     int    `json:"misses"`
-	Sets       int    `json:"sets"`
-	Evictions  int    `json:"evictions"` // TTL expired or LRU evicted
-	Size       int    `json:"size"`      // current entries
-	Path       string `json:"path"`
+	Hits      int    `json:"hits"`
+	Misses    int    `json:"misses"`
+	Sets      int    `json:"sets"`
+	Evictions int    `json:"evictions"` // TTL expired or LRU evicted
+	Size      int    `json:"size"`      // current entries
+	Path      string `json:"path"`
 }
 
 // Cache is a persistent JSON-backed LLM response cache.

@@ -39,10 +39,10 @@ import (
 // patterns when the actual phrase is "I cannot find", which is
 // a legitimate failure, not a refusal).
 type refusalPattern struct {
-	re                   *regexp.Regexp
-	weight               float32
-	label                string // for the audit log (refusal_pattern column)
-	suppressMatchIfAny   []*regexp.Regexp
+	re                    *regexp.Regexp
+	weight                float32
+	label                 string // for the audit log (refusal_pattern column)
+	suppressMatchIfAny    []*regexp.Regexp
 	suppressReductionEach float32 // weight to subtract for each matching suppressMatchIfAny
 }
 
@@ -80,10 +80,10 @@ func init() {
 	legitimateFailurePattern := regexp.MustCompile(`(?i)\bI (?:cannot|can't|am unable)(?:\s+to)?\s+(?:find|search|look\s+up|locate|verify|determine|access|reach|see)\b`)
 
 	type rawPattern struct {
-		pattern            string
-		weight             float32
-		label              string
-		suppressor         *regexp.Regexp
+		pattern             string
+		weight              float32
+		label               string
+		suppressor          *regexp.Regexp
 		suppressorReduction float32
 	}
 	raw := []rawPattern{
@@ -145,9 +145,9 @@ func init() {
 			suppressors = []*regexp.Regexp{r.suppressor}
 		}
 		refusalPatterns = append(refusalPatterns, refusalPattern{
-			re:                   re,
-			weight:               r.weight,
-			label:                r.label,
+			re:                    re,
+			weight:                r.weight,
+			label:                 r.label,
 			suppressMatchIfAny:    suppressors,
 			suppressReductionEach: r.suppressorReduction,
 		})
@@ -184,15 +184,15 @@ const RefusalThreshold float32 = 0.5
 // An empty string returns RefusalSignal{Detected: false}.
 //
 // The scoring works in two passes:
-//   1. For each pattern, if its regex matches, add its weight
-//      to the total. Record the label of the highest-weight
-//      match (for the audit log).
-//   2. For each pattern that matched, check its suppressMatchIfAny
-//      list. If any suppressor matches, subtract
-//      suppressReductionEach from the total for each match.
-//      This handles the "I cannot find" case: the "i_cannot"
-//      pattern fires, but the "legitimate_find" suppressor
-//      also fires and brings the score below the threshold.
+//  1. For each pattern, if its regex matches, add its weight
+//     to the total. Record the label of the highest-weight
+//     match (for the audit log).
+//  2. For each pattern that matched, check its suppressMatchIfAny
+//     list. If any suppressor matches, subtract
+//     suppressReductionEach from the total for each match.
+//     This handles the "I cannot find" case: the "i_cannot"
+//     pattern fires, but the "legitimate_find" suppressor
+//     also fires and brings the score below the threshold.
 func DetectRefusal(text string) RefusalSignal {
 	if text == "" {
 		return RefusalSignal{}

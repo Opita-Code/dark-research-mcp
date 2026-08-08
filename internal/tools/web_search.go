@@ -14,10 +14,10 @@ import (
 )
 
 type webSearchArgs struct {
-	Query     string `json:"query" jsonschema:"Search query (max 400 chars, 50 words)"`
-	Limit     int    `json:"limit,omitempty" jsonschema:"Number of results (1-20, default 10)"`
-	Offset    int    `json:"offset,omitempty" jsonschema:"Pagination offset (0-9)"`
-	Freshness string `json:"freshness,omitempty" jsonschema:"Filter: pd (24h), pw (week), pm (month), py (year)"`
+	Query      string `json:"query" jsonschema:"Search query (max 400 chars, 50 words)"`
+	Limit      int    `json:"limit,omitempty" jsonschema:"Number of results (1-20, default 10)"`
+	Offset     int    `json:"offset,omitempty" jsonschema:"Pagination offset (0-9)"`
+	Freshness  string `json:"freshness,omitempty" jsonschema:"Filter: pd (24h), pw (week), pm (month), py (year)"`
 	SafeSearch string `json:"safesearch,omitempty" jsonschema:"off, moderate, strict (default moderate)"`
 }
 

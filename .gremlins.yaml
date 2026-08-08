@@ -1,0 +1,15 @@
+# Gremlins v0.6.0 project config (migrated from go-mutesting 2026-08-07).
+# go-mutesting RETIRED: no Go modules support (go/build+loader), mutates the
+# real working tree with deferred restore that leaks on abort. gremlins uses
+# go/packages, applies mutants to a temp copy, and is coverage-guided.
+#
+# Keys are viper-nested under `unleash.` (flag CfgKey = unleash.timeout-coefficient).
+# timeout-coefficient: 120 — per-mutant `go test` must fit compile+run. The
+# safety package compiles cold in a fresh workdir copy; with the default
+# coefficient the budget = coverageElapsed*3, which is ~1s when the coverage
+# gather is cache-warm — every cold workdir compile exceeds it and every
+# mutant reports TIMED OUT. 120 keeps the budget generous (0.3s*120 = 36s)
+# so compile+run always fits; TIMED OUT then only means a real deadlock.
+unleash:
+  timeout-coefficient: 120
+  test-cpu: 1

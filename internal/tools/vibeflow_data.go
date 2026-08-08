@@ -250,14 +250,14 @@ func complianceGetTool() Tool {
 // --- artifacts ---
 
 type artifactLogArgs struct {
-	VibeCase     string `json:"case_kind" jsonschema:"Vibe-flow case: C1..C7"`
-	ArtifactType string `json:"artifact_type" jsonschema:"code|text|image|video|audio|multi"`
-	ArtifactURL  string `json:"artifact_url,omitempty" jsonschema:"URL where artifact is hosted (repo, doc, image, video, etc)"`
-	SpecID       int64  `json:"spec_id,omitempty" jsonschema:"Optional spec id for provenance linkage"`
-	BrandID      string `json:"brand_id,omitempty" jsonschema:"Brand id if applicable"`
-	Jurisdiction string `json:"jurisdiction,omitempty" jsonschema:"Jurisdiction for compliance check"`
-	HasDisclosure bool  `json:"has_disclosure,omitempty" jsonschema:"True if artifact has required AI-generation disclosure"`
-	SessionID    string `json:"session_id,omitempty" jsonschema:"Session id"`
+	VibeCase      string `json:"case_kind" jsonschema:"Vibe-flow case: C1..C7"`
+	ArtifactType  string `json:"artifact_type" jsonschema:"code|text|image|video|audio|multi"`
+	ArtifactURL   string `json:"artifact_url,omitempty" jsonschema:"URL where artifact is hosted (repo, doc, image, video, etc)"`
+	SpecID        int64  `json:"spec_id,omitempty" jsonschema:"Optional spec id for provenance linkage"`
+	BrandID       string `json:"brand_id,omitempty" jsonschema:"Brand id if applicable"`
+	Jurisdiction  string `json:"jurisdiction,omitempty" jsonschema:"Jurisdiction for compliance check"`
+	HasDisclosure bool   `json:"has_disclosure,omitempty" jsonschema:"True if artifact has required AI-generation disclosure"`
+	SessionID     string `json:"session_id,omitempty" jsonschema:"Session id"`
 }
 
 func artifactLogTool() Tool {
@@ -336,13 +336,13 @@ func artifactGetTool() Tool {
 // artifactUpdateArgs uses *bool / *int64 sentinels via the MCP layer's
 // JSON pointer convention: only present keys are updated.
 type artifactUpdateArgs struct {
-	ArtifactID      int64   `json:"artifact_id" jsonschema:"Artifact id from dark_research_artifact_log"`
-	SessionID       *string `json:"session_id,omitempty" jsonschema:"New session id. Omit to leave unchanged."`
-	SpecID          *int64  `json:"spec_id,omitempty" jsonschema:"New spec id (or 0 to unlink). Omit to leave unchanged."`
-	ArtifactURL     *string `json:"artifact_url,omitempty" jsonschema:"New artifact URL. Omit to leave unchanged."`
-	BrandID         *string `json:"brand_id,omitempty" jsonschema:"New brand id. Omit to leave unchanged."`
-	Jurisdiction    *string `json:"jurisdiction,omitempty" jsonschema:"New jurisdiction (e.g. 'EU'). Omit to leave unchanged."`
-	HasDisclosure   *bool   `json:"has_disclosure,omitempty" jsonschema:"New has_disclosure value. CRITICAL for EU AI Act compliance: explicitly set true after publishing a C4 video."`
+	ArtifactID       int64   `json:"artifact_id" jsonschema:"Artifact id from dark_research_artifact_log"`
+	SessionID        *string `json:"session_id,omitempty" jsonschema:"New session id. Omit to leave unchanged."`
+	SpecID           *int64  `json:"spec_id,omitempty" jsonschema:"New spec id (or 0 to unlink). Omit to leave unchanged."`
+	ArtifactURL      *string `json:"artifact_url,omitempty" jsonschema:"New artifact URL. Omit to leave unchanged."`
+	BrandID          *string `json:"brand_id,omitempty" jsonschema:"New brand id. Omit to leave unchanged."`
+	Jurisdiction     *string `json:"jurisdiction,omitempty" jsonschema:"New jurisdiction (e.g. 'EU'). Omit to leave unchanged."`
+	HasDisclosure    *bool   `json:"has_disclosure,omitempty" jsonschema:"New has_disclosure value. CRITICAL for EU AI Act compliance: explicitly set true after publishing a C4 video."`
 	ValidationStatus *string `json:"validation_status,omitempty" jsonschema:"New status (pending|passed|failed|drift_detected). Omit to leave unchanged."`
 }
 
@@ -499,19 +499,19 @@ func artifactDownloadTool(c *clients) Tool {
 				truncated = true
 			}
 			out := map[string]any{
-				"artifact_id":   args.ArtifactID,
-				"url":           art.ArtifactURL,
-				"downloaded":    true,
-				"bytes":         len(body),
-				"fetched_at":    time.Now().UTC(),
-				"http_status":   resp.StatusCode,
-				"content":       content,
-				"content_type":  resp.Header.Get("Content-Type"),
-				"truncated":     truncated,
-				"spec_id":       art.SpecID,
-				"vibe_case":     art.VibeCase,
-				"brand_id":      art.BrandID,
-				"jurisdiction":  art.Jurisdiction,
+				"artifact_id":  args.ArtifactID,
+				"url":          art.ArtifactURL,
+				"downloaded":   true,
+				"bytes":        len(body),
+				"fetched_at":   time.Now().UTC(),
+				"http_status":  resp.StatusCode,
+				"content":      content,
+				"content_type": resp.Header.Get("Content-Type"),
+				"truncated":    truncated,
+				"spec_id":      art.SpecID,
+				"vibe_case":    art.VibeCase,
+				"brand_id":     art.BrandID,
+				"jurisdiction": art.Jurisdiction,
 			}
 			return jsonResult(out), nil
 		},
@@ -549,12 +549,12 @@ func brandDeleteTool() Tool {
 // --- drift reports ---
 
 type driftLogArgs struct {
-	ArtifactID      int64  `json:"artifact_id" jsonschema:"Artifact id from dark_research_artifact_log"`
-	SpecID          int64  `json:"spec_id,omitempty" jsonschema:"Spec id from dark_research_spec_create"`
-	Verdict         string `json:"verdict" jsonschema:"aligned | drift_detected | needs_human"`
-	SpecDiff        string `json:"spec_diff,omitempty" jsonschema:"JSON structured diff: {changed:[...], why:'...'}"`
-	JudgeReasoning  string `json:"judge_reasoning,omitempty" jsonschema:"Free-form LLM-as-judge reasoning"`
-	ReconciledAt    string `json:"reconciled_at,omitempty" jsonschema:"ISO timestamp if drift was accepted; auto-marks artifact validation_status='passed'"`
+	ArtifactID     int64  `json:"artifact_id" jsonschema:"Artifact id from dark_research_artifact_log"`
+	SpecID         int64  `json:"spec_id,omitempty" jsonschema:"Spec id from dark_research_spec_create"`
+	Verdict        string `json:"verdict" jsonschema:"aligned | drift_detected | needs_human"`
+	SpecDiff       string `json:"spec_diff,omitempty" jsonschema:"JSON structured diff: {changed:[...], why:'...'}"`
+	JudgeReasoning string `json:"judge_reasoning,omitempty" jsonschema:"Free-form LLM-as-judge reasoning"`
+	ReconciledAt   string `json:"reconciled_at,omitempty" jsonschema:"ISO timestamp if drift was accepted; auto-marks artifact validation_status='passed'"`
 }
 
 func driftLogTool() Tool {
@@ -740,9 +740,9 @@ func specRenderTool() Tool {
 			}
 			md := renderSpecMarkdown(sp)
 			return jsonResult(map[string]any{
-				"spec_id":  sp.ID,
+				"spec_id":   sp.ID,
 				"vibe_case": sp.VibeCase,
-				"markdown": md,
+				"markdown":  md,
 			}), nil
 		},
 	}
@@ -809,8 +809,8 @@ func brandListTool() Tool {
 				return nil, err
 			}
 			return jsonResult(map[string]any{
-				"count":          len(out),
-				"brand_guides":   out,
+				"count":        len(out),
+				"brand_guides": out,
 			}), nil
 		},
 	}
@@ -841,7 +841,7 @@ func complianceListTool() Tool {
 				return nil, err
 			}
 			return jsonResult(map[string]any{
-				"count":           len(out),
+				"count":            len(out),
 				"compliance_rules": out,
 			}), nil
 		},
@@ -919,8 +919,8 @@ func driftListTool() Tool {
 				return nil, err
 			}
 			return jsonResult(map[string]any{
-				"count":          len(out),
-				"drift_reports":  out,
+				"count":         len(out),
+				"drift_reports": out,
 			}), nil
 		},
 	}

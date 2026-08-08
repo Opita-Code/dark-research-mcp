@@ -248,26 +248,26 @@ CREATE INDEX IF NOT EXISTS idx_sdd_eval_created  ON sdd_evaluations(created_at);
 // partially-populated row is still a valid row (we learn the schema as
 // mods declare richer manifests).
 //
-//   constitutions   one row per (constitution_id, version). source
-//                   distinguishes "builtin:light", "builtin:dark" (only
-//                   when compiled with -tags allow_builtin_dark), and
-//                   "user:/path/to/file.toml" (a custom user file).
-//                   parsed_json holds the full TOML dump so a downgrade
-//                   of the loader can still read older manifests.
-//   mods            one row per installed mod manifest. id is the
-//                   immutable "namespace/name" handle; version is semver.
-//                   source tells us where it came from (local path vs
-//                   future registry). manifest_json is the parsed
-//                   mod.toml; sha256 catches tampered files. risk_class
-//                   and target_scope are surfaced to the user in the
-//                   future web-of-mods UI.
-//   mod_loads       audit trail. One row per (mod, session) load event.
-//                   Lets the agent answer "which mods were active when
-//                   this artifact was generated?" — the same provenance
-//                   question that already exists for vibe_specs and
-//                   research_runs. constitution_id is the constitution
-//                   under which the mod was loaded, so we can correlate
-//                   refusals (v3) with the constitution in effect.
+//	constitutions   one row per (constitution_id, version). source
+//	                distinguishes "builtin:light", "builtin:dark" (only
+//	                when compiled with -tags allow_builtin_dark), and
+//	                "user:/path/to/file.toml" (a custom user file).
+//	                parsed_json holds the full TOML dump so a downgrade
+//	                of the loader can still read older manifests.
+//	mods            one row per installed mod manifest. id is the
+//	                immutable "namespace/name" handle; version is semver.
+//	                source tells us where it came from (local path vs
+//	                future registry). manifest_json is the parsed
+//	                mod.toml; sha256 catches tampered files. risk_class
+//	                and target_scope are surfaced to the user in the
+//	                future web-of-mods UI.
+//	mod_loads       audit trail. One row per (mod, session) load event.
+//	                Lets the agent answer "which mods were active when
+//	                this artifact was generated?" — the same provenance
+//	                question that already exists for vibe_specs and
+//	                research_runs. constitution_id is the constitution
+//	                under which the mod was loaded, so we can correlate
+//	                refusals (v3) with the constitution in effect.
 const schemaV2 = `
 CREATE TABLE IF NOT EXISTS constitutions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -326,22 +326,22 @@ CREATE INDEX IF NOT EXISTS idx_mod_loads_session ON mod_loads(session_id);
 // All new columns are nullable or have DEFAULT 0 so existing rows
 // remain valid after the ALTER.
 //
-//   constitution_id     identifier of the constitution in effect
-//                       when the judge ran. NULL means pre-v3 record.
-//   constitution_version semver of that constitution. Together with
-//                       constitution_id gives "dark-research/light@1.0.0".
-//   active_mods_json    JSON array of "mod_id@version" strings. Lets
-//                       us answer "which mods were active when this
-//                       judge verdict was emitted?" — the chain of
-//                       custody needed to reproduce a decision.
-//   refused_attempts    how many times the LLM had to be retried
-//                       before emitting a parseable verdict. 0 =
-//                       first try succeeded. This is the column the
-//                       dark-matrix-analysis skill will group by
-//                       when surfacing refusal rates.
-//   refusal_pattern     when refused_attempts > 0, the regex that
-//                       matched the refusal signal (e.g.
-//                       "I cannot help with that"). NULL otherwise.
+//	constitution_id     identifier of the constitution in effect
+//	                    when the judge ran. NULL means pre-v3 record.
+//	constitution_version semver of that constitution. Together with
+//	                    constitution_id gives "dark-research/light@1.0.0".
+//	active_mods_json    JSON array of "mod_id@version" strings. Lets
+//	                    us answer "which mods were active when this
+//	                    judge verdict was emitted?" — the chain of
+//	                    custody needed to reproduce a decision.
+//	refused_attempts    how many times the LLM had to be retried
+//	                    before emitting a parseable verdict. 0 =
+//	                    first try succeeded. This is the column the
+//	                    dark-matrix-analysis skill will group by
+//	                    when surfacing refusal rates.
+//	refusal_pattern     when refused_attempts > 0, the regex that
+//	                    matched the refusal signal (e.g.
+//	                    "I cannot help with that"). NULL otherwise.
 const schemaV3 = `
 ALTER TABLE sdd_evaluations ADD COLUMN constitution_id     TEXT;
 ALTER TABLE sdd_evaluations ADD COLUMN constitution_version TEXT;

@@ -127,8 +127,8 @@ func TestCache_stats_track(t *testing.T) {
 	defer c.Clear()
 
 	_ = c.Set("m", "s", "u", "v")
-	_, _, _ = c.Get("m", "s", "u")        // hit
-	_, _, _ = c.Get("m", "s", "u")        // hit
+	_, _, _ = c.Get("m", "s", "u")         // hit
+	_, _, _ = c.Get("m", "s", "u")         // hit
 	_, _, _ = c.Get("m", "s", "different") // miss
 
 	st := c.Stats()

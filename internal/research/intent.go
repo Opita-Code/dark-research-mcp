@@ -68,21 +68,21 @@ func ParseIntent(s string) Intent {
 // --- classifier signals ---
 
 var (
-	reCVE       = regexp.MustCompile(`\bCVE-\d{4}-\d{4,7}\b`)
-	reDOI       = regexp.MustCompile(`\b10\.\d{4,9}/[-._;()/:A-Za-z0-9]+\b`)
-	reArxivURL  = regexp.MustCompile(`arxiv\.org/(?:abs|pdf)/[\d.]+`)
-	reArxivID   = regexp.MustCompile(`\barXiv:\d{4}\.\d{4,5}(v\d+)?\b`)
-	reEmail     = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
-	reOnion     = regexp.MustCompile(`[a-zA-Z0-9]{16,56}\.onion\b`)
-	reIPv4      = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
-	reIPv6      = regexp.MustCompile(`\b(?:[a-fA-F0-9]{1,4}:){2,}[a-fA-F0-9:]+\b`)
-	reDomain    = regexp.MustCompile(`\b([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,24}\b`)
-	reGitHub    = regexp.MustCompile(`\bgithub\.com/[A-Za-z0-9._\-]+(?:/[A-Za-z0-9._\-]+)?\b`)
-	reCratesIO  = regexp.MustCompile(`\bcrates\.io/crates/[a-zA-Z0-9_\-]+\b`)
-	reNPM       = regexp.MustCompile(`\bnpmjs\.com/package/[a-zA-Z0-9_\-]+\b`)
+	reCVE      = regexp.MustCompile(`\bCVE-\d{4}-\d{4,7}\b`)
+	reDOI      = regexp.MustCompile(`\b10\.\d{4,9}/[-._;()/:A-Za-z0-9]+\b`)
+	reArxivURL = regexp.MustCompile(`arxiv\.org/(?:abs|pdf)/[\d.]+`)
+	reArxivID  = regexp.MustCompile(`\barXiv:\d{4}\.\d{4,5}(v\d+)?\b`)
+	reEmail    = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
+	reOnion    = regexp.MustCompile(`[a-zA-Z0-9]{16,56}\.onion\b`)
+	reIPv4     = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
+	reIPv6     = regexp.MustCompile(`\b(?:[a-fA-F0-9]{1,4}:){2,}[a-fA-F0-9:]+\b`)
+	reDomain   = regexp.MustCompile(`\b([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,24}\b`)
+	reGitHub   = regexp.MustCompile(`\bgithub\.com/[A-Za-z0-9._\-]+(?:/[A-Za-z0-9._\-]+)?\b`)
+	reCratesIO = regexp.MustCompile(`\bcrates\.io/crates/[a-zA-Z0-9_\-]+\b`)
+	reNPM      = regexp.MustCompile(`\bnpmjs\.com/package/[a-zA-Z0-9_\-]+\b`)
 
-	newsKeywords  = []string{"news", "today", "yesterday", "latest", "this week", "headline", "breaking"}
-	geoKeywords   = []string{"where is", "coordinates", "latitude", "longitude", "lat/lon", "address of", "country of"}
+	newsKeywords   = []string{"news", "today", "yesterday", "latest", "this week", "headline", "breaking"}
+	geoKeywords    = []string{"where is", "coordinates", "latitude", "longitude", "lat/lon", "address of", "country of"}
 	threatKeywords = []string{"cve", "vulnerability", "exploit", "ioc", "indicator", "malware", "phishing", "c2", "botnet"}
 )
 
@@ -114,9 +114,9 @@ func Classify(query string) Intent {
 	}
 
 	// Keyword signals FIRST so context wins over patterns.
-// "vulnerability in 192.168.1.1" should route to threat/cve, not ip.
-// "Docker 1.2.3.4 release notes" should route to news, not ip.
-// (bug-hunt 2026-07-14 BUG-005.)
+	// "vulnerability in 192.168.1.1" should route to threat/cve, not ip.
+	// "Docker 1.2.3.4 release notes" should route to news, not ip.
+	// (bug-hunt 2026-07-14 BUG-005.)
 	if anyContains(ql, threatKeywords) {
 		return IntentThreat
 	}

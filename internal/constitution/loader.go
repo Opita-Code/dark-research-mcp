@@ -52,10 +52,11 @@ var lightFS []byte
 // This separation is a hard security/distribution boundary. The
 // public binary cannot resolve "dark" to a built-in even if asked.
 // Users who want the dark constitution either:
-//   (a) build their own binary with `-tags allow_builtin_dark`, or
-//   (b) copy `constitutions/dark.toml` to
-//       `~/.dark-research/constitutions/dark.toml` and load it via
-//       `--constitution user/dark` (treated as a user-source file).
+//
+//	(a) build their own binary with `-tags allow_builtin_dark`, or
+//	(b) copy `constitutions/dark.toml` to
+//	    `~/.dark-research/constitutions/dark.toml` and load it via
+//	    `--constitution user/dark` (treated as a user-source file).
 var loadDark func() []byte // populated by loader_dark.go's init() on tagged builds
 
 // darkInitOnce ensures the dark constitution is parsed exactly

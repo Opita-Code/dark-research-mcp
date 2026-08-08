@@ -15,9 +15,9 @@ func TestDetectHarness(t *testing.T) {
 	clearHarnessEnv(t)
 
 	cases := []struct {
-		name    string
-		setEnv  map[string]string
-		want    Harness
+		name   string
+		setEnv map[string]string
+		want   Harness
 	}{
 		{
 			name:   "claude_code_via_CLAUDE_CODE_ENTRYPOINT",

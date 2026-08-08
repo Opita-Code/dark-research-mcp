@@ -5,7 +5,7 @@
 // loadWindowsUserEnv reads the user-level environment variables from
 // the Windows registry (HKCU\Environment) and merges them into out.
 //
-// Why this is needed
+// # Why this is needed
 //
 // On Windows, the user-level env (what the operator sets via
 // "System → Advanced → Environment Variables") lives in the

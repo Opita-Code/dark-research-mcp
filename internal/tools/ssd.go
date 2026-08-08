@@ -386,8 +386,8 @@ Where:
 - reasoning: 1-2 sentence explanation`, b.Voice, truncateContent(args.Content, 4000))
 
 			var verdict struct {
-				Match      float32 `json:"match"`
-				VoiceMatch bool    `json:"voice_match"`
+				Match      float32  `json:"match"`
+				VoiceMatch bool     `json:"voice_match"`
 				Issues     []string `json:"issues"`
 				Reasoning  string   `json:"reasoning"`
 			}
@@ -401,15 +401,15 @@ Where:
 			verdictJSON, _ := json.Marshal(verdict)
 
 			_, _ = m.SaveSDDEvaluation(ctx, fillConstitutionFields(&mem.SDDEvaluation{
-				EvalType:         "brand_match",
-				TargetType:       "brand",
-				TargetID:         args.BrandID,
-				VerdictJSON:      string(verdictJSON),
-				Confidence:       verdict.Match,
-				PromptVersion:    "v1",
-				Model:            c.Model,
-				RefusedAttempts:  llmResult.RefusedAttempts,
-				RefusalPattern:   refusalPatternFromResult(llmResult),
+				EvalType:        "brand_match",
+				TargetType:      "brand",
+				TargetID:        args.BrandID,
+				VerdictJSON:     string(verdictJSON),
+				Confidence:      verdict.Match,
+				PromptVersion:   "v1",
+				Model:           c.Model,
+				RefusedAttempts: llmResult.RefusedAttempts,
+				RefusalPattern:  refusalPatternFromResult(llmResult),
 			}))
 
 			return jsonResult(map[string]any{
@@ -477,10 +477,10 @@ Where:
 - reasoning: 1-2 sentence explanation`, args.Jurisdiction, r.Rules, r.EffectiveAt, truncateContent(args.Content, 4000))
 
 			var verdict struct {
-				Compliant          bool     `json:"compliant"`
-				Issues             []string `json:"issues"`
+				Compliant           bool     `json:"compliant"`
+				Issues              []string `json:"issues"`
 				RequiredDisclosures []string `json:"required_disclosures"`
-				Reasoning          string   `json:"reasoning"`
+				Reasoning           string   `json:"reasoning"`
 			}
 			llmResult, err := judgeCompleteJSON(ctx, c, system, user, &verdict)
 			if err != nil {
@@ -499,15 +499,15 @@ Where:
 			}
 
 			_, _ = m.SaveSDDEvaluation(ctx, fillConstitutionFields(&mem.SDDEvaluation{
-				EvalType:         "compliance_check",
-				TargetType:       "jurisdiction",
-				TargetID:         args.Jurisdiction,
-				VerdictJSON:      string(verdictJSON),
-				Confidence:       confidence,
-				PromptVersion:    "v1",
-				Model:            c.Model,
-				RefusedAttempts:  llmResult.RefusedAttempts,
-				RefusalPattern:   refusalPatternFromResult(llmResult),
+				EvalType:        "compliance_check",
+				TargetType:      "jurisdiction",
+				TargetID:        args.Jurisdiction,
+				VerdictJSON:     string(verdictJSON),
+				Confidence:      confidence,
+				PromptVersion:   "v1",
+				Model:           c.Model,
+				RefusedAttempts: llmResult.RefusedAttempts,
+				RefusalPattern:  refusalPatternFromResult(llmResult),
 			}))
 
 			return jsonResult(map[string]any{
@@ -522,9 +522,9 @@ Where:
 // --- drift_judge ---
 
 type driftJudgeArgs struct {
-	ArtifactID      int64  `json:"artifact_id" jsonschema:"Artifact id from dark_research_artifact_log"`
-	SpecID          int64  `json:"spec_id,omitempty" jsonschema:"Optional spec id. If not provided, looks up the spec linked to the artifact."`
-	ArtifactText   string `json:"artifact_text,omitempty" jsonschema:"Optional: text content of the artifact. Required if artifact_url is not fetchable or if comparing descriptions."`
+	ArtifactID   int64  `json:"artifact_id" jsonschema:"Artifact id from dark_research_artifact_log"`
+	SpecID       int64  `json:"spec_id,omitempty" jsonschema:"Optional spec id. If not provided, looks up the spec linked to the artifact."`
+	ArtifactText string `json:"artifact_text,omitempty" jsonschema:"Optional: text content of the artifact. Required if artifact_url is not fetchable or if comparing descriptions."`
 }
 
 func driftJudgeTool() Tool {
@@ -606,15 +606,15 @@ Where:
 			verdictJSON, _ := json.Marshal(verdict)
 
 			_, _ = m.SaveSDDEvaluation(ctx, fillConstitutionFields(&mem.SDDEvaluation{
-				EvalType:         "drift_judge",
-				TargetType:       "artifact",
-				TargetID:         fmt.Sprintf("%d", args.ArtifactID),
-				VerdictJSON:      string(verdictJSON),
-				Confidence:       verdict.Confidence,
-				PromptVersion:    "v1",
-				Model:            c.Model,
-				RefusedAttempts:  llmResult.RefusedAttempts,
-				RefusalPattern:   refusalPatternFromResult(llmResult),
+				EvalType:        "drift_judge",
+				TargetType:      "artifact",
+				TargetID:        fmt.Sprintf("%d", args.ArtifactID),
+				VerdictJSON:     string(verdictJSON),
+				Confidence:      verdict.Confidence,
+				PromptVersion:   "v1",
+				Model:           c.Model,
+				RefusedAttempts: llmResult.RefusedAttempts,
+				RefusalPattern:  refusalPatternFromResult(llmResult),
 			}))
 
 			return jsonResult(map[string]any{
@@ -721,15 +721,15 @@ Where:
 
 			if m != nil {
 				_, _ = m.SaveSDDEvaluation(ctx, fillConstitutionFields(&mem.SDDEvaluation{
-					EvalType:         "grounding_check",
-					TargetType:       "claim",
-					TargetID:         truncateContent(args.Claim, 200),
-					VerdictJSON:      string(verdictJSON),
-					Confidence:       verdict.Confidence,
-					PromptVersion:    "v1",
-					Model:            c.Model,
-					RefusedAttempts:  llmResult.RefusedAttempts,
-					RefusalPattern:   refusalPatternFromResult(llmResult),
+					EvalType:        "grounding_check",
+					TargetType:      "claim",
+					TargetID:        truncateContent(args.Claim, 200),
+					VerdictJSON:     string(verdictJSON),
+					Confidence:      verdict.Confidence,
+					PromptVersion:   "v1",
+					Model:           c.Model,
+					RefusedAttempts: llmResult.RefusedAttempts,
+					RefusalPattern:  refusalPatternFromResult(llmResult),
 				}))
 			}
 
@@ -771,12 +771,12 @@ func piiDetectTool() Tool {
 			user := fmt.Sprintf("Content to scan (%d chars):\n%s", len(args.Content), truncateContent(args.Content, 6000))
 
 			var verdict struct {
-				PIIFound        bool     `json:"pii_found"`
-				Items           []any    `json:"items"`
-				OverallSeverity string   `json:"overall_severity"`
-				Recommendation  string   `json:"recommendation"`
-				Confidence      float32  `json:"confidence"`
-				Reasoning       string   `json:"reasoning"`
+				PIIFound        bool    `json:"pii_found"`
+				Items           []any   `json:"items"`
+				OverallSeverity string  `json:"overall_severity"`
+				Recommendation  string  `json:"recommendation"`
+				Confidence      float32 `json:"confidence"`
+				Reasoning       string  `json:"reasoning"`
 			}
 			llmResult, err := judgeCompleteJSON(ctx, c, system, user, &verdict)
 			if err != nil {
@@ -792,15 +792,15 @@ func piiDetectTool() Tool {
 			targetID := fmt.Sprintf("pii:%x", sha1Of(args.Content))
 			if m := sharedMem(); m != nil {
 				_, _ = m.SaveSDDEvaluation(ctx, fillConstitutionFields(&mem.SDDEvaluation{
-					EvalType:         "pii_detect",
-					TargetType:       "content",
-					TargetID:         targetID,
-					VerdictJSON:      string(verdictJSON),
-					Confidence:       verdict.Confidence,
-					PromptVersion:    "v1",
-					Model:            c.Model,
-					RefusedAttempts:  llmResult.RefusedAttempts,
-					RefusalPattern:   refusalPatternFromResult(llmResult),
+					EvalType:        "pii_detect",
+					TargetType:      "content",
+					TargetID:        targetID,
+					VerdictJSON:     string(verdictJSON),
+					Confidence:      verdict.Confidence,
+					PromptVersion:   "v1",
+					Model:           c.Model,
+					RefusedAttempts: llmResult.RefusedAttempts,
+					RefusalPattern:  refusalPatternFromResult(llmResult),
 				}))
 			}
 
@@ -865,15 +865,15 @@ func promptInjectionTool() Tool {
 			targetID := fmt.Sprintf("inject:%x", sha1Of(args.Content))
 			if m := sharedMem(); m != nil {
 				_, _ = m.SaveSDDEvaluation(ctx, fillConstitutionFields(&mem.SDDEvaluation{
-					EvalType:         "prompt_injection_scan",
-					TargetType:       "content",
-					TargetID:         targetID,
-					VerdictJSON:      string(verdictJSON),
-					Confidence:       verdict.Confidence,
-					PromptVersion:    "v1",
-					Model:            c.Model,
-					RefusedAttempts:  llmResult.RefusedAttempts,
-					RefusalPattern:   refusalPatternFromResult(llmResult),
+					EvalType:        "prompt_injection_scan",
+					TargetType:      "content",
+					TargetID:        targetID,
+					VerdictJSON:     string(verdictJSON),
+					Confidence:      verdict.Confidence,
+					PromptVersion:   "v1",
+					Model:           c.Model,
+					RefusedAttempts: llmResult.RefusedAttempts,
+					RefusalPattern:  refusalPatternFromResult(llmResult),
 				}))
 			}
 
@@ -891,11 +891,11 @@ func promptInjectionTool() Tool {
 // --- consensus (multi-sample judging) ---
 
 type ssdConsensusArgs struct {
-	EvalType string `json:"eval_type" jsonschema:"Which judge to run multiple times: brand_match | compliance_check | drift_judge | grounding_check | pii_detect | prompt_injection_scan"`
-	Content  string `json:"content" jsonschema:"Content to evaluate"`
-	BrandID  string `json:"brand_id,omitempty" jsonschema:"For brand_match: brand_id to look up"`
+	EvalType     string `json:"eval_type" jsonschema:"Which judge to run multiple times: brand_match | compliance_check | drift_judge | grounding_check | pii_detect | prompt_injection_scan"`
+	Content      string `json:"content" jsonschema:"Content to evaluate"`
+	BrandID      string `json:"brand_id,omitempty" jsonschema:"For brand_match: brand_id to look up"`
 	Jurisdiction string `json:"jurisdiction,omitempty" jsonschema:"For compliance_check: jurisdiction code"`
-	N        int    `json:"n,omitempty" jsonschema:"Number of samples (default 3, max 7). Higher = more reliable, more API cost."`
+	N            int    `json:"n,omitempty" jsonschema:"Number of samples (default 3, max 7). Higher = more reliable, more API cost."`
 }
 
 func ssdConsensusTool() Tool {
@@ -941,26 +941,26 @@ func ssdConsensusTool() Tool {
 			var confidences []float32
 			for i := 0; i < args.N; i++ {
 				var v struct {
-					Verdict    string  `json:"verdict"`
-					Compliant  bool    `json:"compliant"`
-					Match      float32 `json:"match"`
-					Grounded   bool    `json:"grounded"`
-					PIIFound   bool    `json:"pii_found"`
-					InjectionFound bool `json:"injection_found"`
-					Confidence float32 `json:"confidence"`
-					Reasoning  string  `json:"reasoning"`
+					Verdict        string  `json:"verdict"`
+					Compliant      bool    `json:"compliant"`
+					Match          float32 `json:"match"`
+					Grounded       bool    `json:"grounded"`
+					PIIFound       bool    `json:"pii_found"`
+					InjectionFound bool    `json:"injection_found"`
+					Confidence     float32 `json:"confidence"`
+					Reasoning      string  `json:"reasoning"`
 				}
-			llmResult, err := judgeCompleteJSON(ctx, c, system, user, &v)
-			if err != nil {
-				// On refusal exhaustion, persist the audit row so
-				// the trail is complete. Other errors propagate
-				// without persisting (transient network/parse).
-				if errors.Is(err, llm.ErrRefusalExhausted) {
-					_ = persistRefusal(sharedMem(), ctx, args.EvalType, "consensus_sample", fmt.Sprintf("%d/%d", i+1, args.N), c.Model, system, llmResult)
+				llmResult, err := judgeCompleteJSON(ctx, c, system, user, &v)
+				if err != nil {
+					// On refusal exhaustion, persist the audit row so
+					// the trail is complete. Other errors propagate
+					// without persisting (transient network/parse).
+					if errors.Is(err, llm.ErrRefusalExhausted) {
+						_ = persistRefusal(sharedMem(), ctx, args.EvalType, "consensus_sample", fmt.Sprintf("%d/%d", i+1, args.N), c.Model, system, llmResult)
+						return nil, fmt.Errorf("dark-ssd: consensus sample %d/%d: %w", i+1, args.N, err)
+					}
 					return nil, fmt.Errorf("dark-ssd: consensus sample %d/%d: %w", i+1, args.N, err)
 				}
-				return nil, fmt.Errorf("dark-ssd: consensus sample %d/%d: %w", i+1, args.N, err)
-			}
 				// Pick the "headline" verdict field per eval_type.
 				var headline string
 				switch args.EvalType {
@@ -1020,18 +1020,18 @@ func ssdConsensusTool() Tool {
 			avg, stddev, mn, mx := confidenceStats(confidences)
 
 			out := map[string]any{
-				"eval_type":      args.EvalType,
-				"samples":        args.N,
-				"mode":           mode,
-				"mode_count":     modeCount,
-				"agreement":      fmt.Sprintf("%d/%d", modeCount, args.N),
-				"confidence_avg": avg,
+				"eval_type":         args.EvalType,
+				"samples":           args.N,
+				"mode":              mode,
+				"mode_count":        modeCount,
+				"agreement":         fmt.Sprintf("%d/%d", modeCount, args.N),
+				"confidence_avg":    avg,
 				"confidence_stddev": stddev,
-				"confidence_min": mn,
-				"confidence_max": mx,
-				"headline_counts": counts,
-				"raw_samples":    samples,
-				"model":          c.Model,
+				"confidence_min":    mn,
+				"confidence_max":    mx,
+				"headline_counts":   counts,
+				"raw_samples":       samples,
+				"model":             c.Model,
 			}
 			return jsonResult(out), nil
 		},
@@ -1179,7 +1179,7 @@ func listSDDEvaluationsTool() Tool {
 				return nil, err
 			}
 			return jsonResult(map[string]any{
-				"count":      len(evals),
+				"count":       len(evals),
 				"evaluations": evals,
 			}), nil
 		},

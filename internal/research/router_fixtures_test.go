@@ -31,7 +31,7 @@ import (
 // both under `go test ./internal/research/` and `go test ./...`.
 var fixturesDir = func() string {
 	candidates := []string{
-		"../../fixtures",                 // go test ./internal/research/
+		"../../fixtures",                   // go test ./internal/research/
 		"internal/research/../../fixtures", // belt-and-braces
 	}
 	for _, c := range candidates {

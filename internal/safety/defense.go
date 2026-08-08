@@ -10,15 +10,15 @@
 // Mapping to Lushbinary's 10 defense layers (2026 production
 // playbook):
 //
-//   L1 Input validation  → InputValidator
-//   L2 Output filtering  → OutputSanitizer (canary + injection-marker detection)
-//   L5 Boundary markers  → WrapUntrusted (already in safety.go) + BoundaryMarkers
-//   L6 Instruction hier. → enforced in tool handlers (refuse if constitution is nil)
-//   L7 Canary tokens    → CanaryToken (generated per-session, embedded in
-//                          constitution, detected in tool outputs)
-//   L8 Rate limiting    → RateLimiter (per-session tool-call cap)
-//   L9 Anomaly detect.  → AnomalyDetector (hook points for future ML-based
-//                          detection; current implementation is heuristic)
+//	L1 Input validation  → InputValidator
+//	L2 Output filtering  → OutputSanitizer (canary + injection-marker detection)
+//	L5 Boundary markers  → WrapUntrusted (already in safety.go) + BoundaryMarkers
+//	L6 Instruction hier. → enforced in tool handlers (refuse if constitution is nil)
+//	L7 Canary tokens    → CanaryToken (generated per-session, embedded in
+//	                       constitution, detected in tool outputs)
+//	L8 Rate limiting    → RateLimiter (per-session tool-call cap)
+//	L9 Anomaly detect.  → AnomalyDetector (hook points for future ML-based
+//	                       detection; current implementation is heuristic)
 //
 // The remaining layers (L3 privilege separation, L4 sandboxing,
 // L10 HITL) are documented in docs/security/threat-model.md as
@@ -296,10 +296,15 @@ func (s *OutputSanitizer) Check(output string) SanitizeResult {
 // infeasible even for an LLM that can make millions of guesses.
 type CanaryToken string
 
+// randRead is the entropy source. It is a package var so tests
+// can inject a failure and exercise the fallback branch of
+// NewCanary deterministically.
+var randRead = rand.Read
+
 // NewCanary generates a fresh canary token.
 func NewCanary() CanaryToken {
 	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
+	if _, err := randRead(b[:]); err != nil {
 		// crypto/rand failure on Linux is catastrophic; on
 		// other platforms, fall back to time-based entropy.
 		// In practice, rand.Read on the supported platforms
@@ -404,15 +409,16 @@ func (r *RateLimiter) PerToolCount(tool string) int {
 
 // AnomalyEvent is one detected anomaly.
 type AnomalyEvent struct {
-	Time    time.Time
-	Kind    string // "refusal_burst" | "canary_leak" | "tool_runaway"
-	Tool    string
-	Detail  string
+	Time   time.Time
+	Kind   string // "refusal_burst" | "canary_leak" | "tool_runaway"
+	Tool   string
+	Detail string
 }
 
 // AnomalyDetector tracks rolling windows of events and reports
 // anomalies. Events are exposed via the OnAnomaly hook so an
-// external operator (or test code) can react.
+// external operator (or test code) can react, and are also
+// recorded in order internally (see Events).
 type AnomalyDetector struct {
 	mu sync.Mutex
 
@@ -432,6 +438,14 @@ type AnomalyDetector struct {
 	// Max canary leaks in a session before flagging
 	maxCanaryLeaks int
 
+	// now returns the current time. Overridable in tests to make
+	// rolling-window behavior deterministic. Defaults to time.Now.
+	now func() time.Time
+
+	// events records every anomaly fired, in fire order. Exposed
+	// via Events().
+	events []AnomalyEvent
+
 	// Hook called when an anomaly is detected.
 	OnAnomaly func(AnomalyEvent)
 }
@@ -442,64 +456,105 @@ func NewAnomalyDetector() *AnomalyDetector {
 		maxRefusalBurst: 3,
 		maxToolRunaway:  50,
 		maxCanaryLeaks:  3,
+		now:             time.Now,
 	}
+}
+
+// clock returns the current time, honoring an injected clock.
+// The nil fallback keeps zero-value detectors usable.
+func (a *AnomalyDetector) clock() time.Time {
+	if a.now == nil {
+		return time.Now()
+	}
+	return a.now()
+}
+
+// Events returns a copy of the anomalies fired so far, in order.
+func (a *AnomalyDetector) Events() []AnomalyEvent {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	out := make([]AnomalyEvent, len(a.events))
+	copy(out, a.events)
+	return out
 }
 
 // RecordRefusal records a refusal event. Flags "refusal_burst"
 // if more than maxRefusalBurst occurred in the last 60s.
 func (a *AnomalyDetector) RecordRefusal(tool string) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
-	now := time.Now()
+	now := a.clock()
 	a.refusalTimes = append(a.refusalTimes, now)
-	a.refusalTimes = pruneOldTimes(a.refusalTimes, 60*time.Second)
+	a.refusalTimes = pruneOldTimes(a.refusalTimes, 60*time.Second, now)
+	ev := AnomalyEvent{}
+	fired := false
 	if len(a.refusalTimes) >= a.maxRefusalBurst {
-		a.fire(AnomalyEvent{
+		ev = AnomalyEvent{
 			Time:   now,
 			Kind:   "refusal_burst",
 			Tool:   tool,
 			Detail: fmt.Sprintf("%d refusals in 60s", len(a.refusalTimes)),
-		})
+		}
+		a.events = append(a.events, ev)
+		fired = true
+	}
+	a.mu.Unlock()
+	if fired {
+		a.fire(ev)
 	}
 }
 
 // RecordCanaryLeak records a canary leak event.
 func (a *AnomalyDetector) RecordCanaryLeak(tool string, excerpt string) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	a.canaryLeaks++
+	ev := AnomalyEvent{}
+	fired := false
 	if a.canaryLeaks >= a.maxCanaryLeaks {
-		a.fire(AnomalyEvent{
-			Time:   time.Now(),
+		ev = AnomalyEvent{
+			Time:   a.clock(),
 			Kind:   "canary_leak",
 			Tool:   tool,
 			Detail: fmt.Sprintf("%d canary leaks in session (last excerpt: %q)", a.canaryLeaks, excerpt),
-		})
+		}
+		a.events = append(a.events, ev)
+		fired = true
+	}
+	a.mu.Unlock()
+	if fired {
+		a.fire(ev)
 	}
 }
 
 // RecordToolCall records a tool call (used to detect runaway).
 func (a *AnomalyDetector) RecordToolCall(tool string) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
-	now := time.Now()
+	now := a.clock()
 	a.toolCalls[tool] = append(a.toolCalls[tool], now)
-	a.toolCalls[tool] = pruneOldTimes(a.toolCalls[tool], 60*time.Second)
+	a.toolCalls[tool] = pruneOldTimes(a.toolCalls[tool], 60*time.Second, now)
+	ev := AnomalyEvent{}
+	fired := false
 	if len(a.toolCalls[tool]) >= a.maxToolRunaway {
-		a.fire(AnomalyEvent{
+		ev = AnomalyEvent{
 			Time:   now,
 			Kind:   "tool_runaway",
 			Tool:   tool,
 			Detail: fmt.Sprintf("%d calls to %q in 60s", len(a.toolCalls[tool]), tool),
-		})
+		}
+		a.events = append(a.events, ev)
+		fired = true
+	}
+	a.mu.Unlock()
+	if fired {
+		a.fire(ev)
 	}
 }
 
 // pruneOldTimes drops entries older than `window` from the front
-// of a time slice. Returns a re-sliced view (no allocation of
-// the underlying array contents).
-func pruneOldTimes(times []time.Time, window time.Duration) []time.Time {
-	cutoff := time.Now().Add(-window)
+// of a time slice. `now` is injected so the window boundary is
+// deterministic under test. Returns a re-sliced view (no
+// allocation of the underlying array contents).
+func pruneOldTimes(times []time.Time, window time.Duration, now time.Time) []time.Time {
+	cutoff := now.Add(-window)
 	i := 0
 	for i < len(times) && times[i].Before(cutoff) {
 		i++
@@ -516,8 +571,7 @@ func (a *AnomalyDetector) fire(ev AnomalyEvent) {
 	if a.OnAnomaly == nil {
 		return
 	}
-	// Fire in a goroutine to avoid holding the lock during the hook.
-	go a.OnAnomaly(ev)
+	a.OnAnomaly(ev)
 }
 
 // ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@
 //   - POST /v1/messages with x-api-key (any non-empty value)
 //   - Responds with HTTP 200 + JSON body of the form
 //     {"content":[{"type":"text","text":"..."}],"stop_reason":"end_turn",
-//      "model":"...","usage":{...}}
+//     "model":"...","usage":{...}}
 //
 // All requests are logged to stderr with method, path, model, and
 // max_tokens (extracted from the body). The reply text is a
@@ -14,10 +14,11 @@
 // audit task can parse back to confirm the round-trip works.
 //
 // Usage:
-//   go run ./cmd/mock-llm                 # listens on :9000
-//   $env:SDD_LLM_BASE_URL = "http://127.0.0.1:9000"
-//   $env:SDD_LLM_PROVIDER = "openai"     # so client appends /v1/chat/completions
-//   ./vibe-studio-prototype.exe
+//
+//	go run ./cmd/mock-llm                 # listens on :9000
+//	$env:SDD_LLM_BASE_URL = "http://127.0.0.1:9000"
+//	$env:SDD_LLM_PROVIDER = "openai"     # so client appends /v1/chat/completions
+//	./vibe-studio-prototype.exe
 package main
 
 import (
@@ -129,8 +130,8 @@ func handleMessages(w http.ResponseWriter, r *http.Request) {
 			},
 			"singleton_leftovers": 0,
 			"shared_state_count":  34,
-			"verdict":              "P-1 refactor complete; tools.All(cfg, ss) works; spec 97 hardened",
-			"note":                 "this response came from mock-llm (port 9000); replace SDD_LLM_BASE_URL with the real provider to swap",
+			"verdict":             "P-1 refactor complete; tools.All(cfg, ss) works; spec 97 hardened",
+			"note":                "this response came from mock-llm (port 9000); replace SDD_LLM_BASE_URL with the real provider to swap",
 		},
 		"ts": time.Now().UTC().Format(time.RFC3339),
 	}

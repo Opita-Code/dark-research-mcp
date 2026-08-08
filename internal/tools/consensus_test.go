@@ -35,7 +35,7 @@ func mockLLMServer(t *testing.T, responses []map[string]any) *httptest.Server {
 		}
 		idx := int(atomic.AddInt32(&callCount, 1)-1) % len(responses)
 		envelope := map[string]any{
-			"content":    []map[string]any{{"type": "text", "text": mustJSON(t, responses[idx])}},
+			"content":     []map[string]any{{"type": "text", "text": mustJSON(t, responses[idx])}},
 			"stop_reason": "end_turn",
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -122,10 +122,10 @@ func TestConsensus_AllAgree(t *testing.T) {
 	}
 
 	out, err := callConsensus(t, map[string]any{
-		"eval_type":   "compliance_check",
+		"eval_type":    "compliance_check",
 		"jurisdiction": "EU",
-		"content":     "fake ad copy",
-		"n":           3,
+		"content":      "fake ad copy",
+		"n":            3,
 	})
 	if err != nil {
 		t.Fatalf("handler error: %v", err)
@@ -203,7 +203,7 @@ func TestConsensus_NDefaultsTo3(t *testing.T) {
 	one := []map[string]any{
 		{"compliant": true, "confidence": 0.9, "reasoning": "ok"},
 	}
-srv := mockLLMServer(t, one)
+	srv := mockLLMServer(t, one)
 	t.Cleanup(srv.Close)
 	defer installMockLLM(t, srv)()
 
@@ -216,9 +216,9 @@ srv := mockLLMServer(t, one)
 	}
 
 	out, err := callConsensus(t, map[string]any{
-		"eval_type":   "compliance_check",
+		"eval_type":    "compliance_check",
 		"jurisdiction": "EU",
-		"content":     "x",
+		"content":      "x",
 	})
 	if err != nil {
 		t.Fatalf("handler error: %v", err)

@@ -67,8 +67,8 @@ type textAnonymizeArgs struct {
 }
 
 type textAnonymizeOutput struct {
-	Anonymized string            `json:"anonymized"`
-	Replacements map[string]int  `json:"replacements"`
+	Anonymized   string         `json:"anonymized"`
+	Replacements map[string]int `json:"replacements"`
 }
 
 func textAnonymizeTool() Tool {

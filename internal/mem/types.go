@@ -147,10 +147,10 @@ type DriftReport struct {
 // supply these.
 type SDDEvaluation struct {
 	ID                  int64   `json:"id"`
-	EvalType            string  `json:"eval_type"`            // brand_match | compliance_check | drift_judge | grounding_check
-	TargetType          string  `json:"target_type"`          // artifact | spec | claim
-	TargetID            string  `json:"target_id"`            // string for flexibility
-	VerdictJSON         string  `json:"verdict_json"`         // opaque JSON blob
+	EvalType            string  `json:"eval_type"`    // brand_match | compliance_check | drift_judge | grounding_check
+	TargetType          string  `json:"target_type"`  // artifact | spec | claim
+	TargetID            string  `json:"target_id"`    // string for flexibility
+	VerdictJSON         string  `json:"verdict_json"` // opaque JSON blob
 	Confidence          float32 `json:"confidence"`
 	PromptVersion       string  `json:"prompt_version,omitempty"`
 	Model               string  `json:"model,omitempty"`
@@ -192,14 +192,14 @@ type SDDEvaluation struct {
 // reproduce the exact manifest that was in effect.
 type Constitution struct {
 	ID             int64  `json:"id"`
-	ConstitutionID string `json:"constitution_id"`           // e.g. "dark-research/light"
-	Version        string `json:"version"`                  // semver, e.g. "1.0.0"
-	Label          string `json:"label,omitempty"`          // human-readable
-	Source         string `json:"source"`                   // builtin:light | builtin:dark | user:<path>
-	FilePath       string `json:"file_path"`                // absolute path or "<builtin>"
-	ParsedJSON     string `json:"parsed_json"`              // full TOML dump
-	SHA256         string `json:"sha256"`                   // hash of the source file
-	Enabled        bool   `json:"enabled"`                  // 0 = disabled, 1 = active
+	ConstitutionID string `json:"constitution_id"` // e.g. "dark-research/light"
+	Version        string `json:"version"`         // semver, e.g. "1.0.0"
+	Label          string `json:"label,omitempty"` // human-readable
+	Source         string `json:"source"`          // builtin:light | builtin:dark | user:<path>
+	FilePath       string `json:"file_path"`       // absolute path or "<builtin>"
+	ParsedJSON     string `json:"parsed_json"`     // full TOML dump
+	SHA256         string `json:"sha256"`          // hash of the source file
+	Enabled        bool   `json:"enabled"`         // 0 = disabled, 1 = active
 	CreatedAt      string `json:"created_at"`
 	ActivatedAt    string `json:"activated_at,omitempty"`
 }
@@ -215,14 +215,14 @@ type Constitution struct {
 // so users can filter / warn before installing.
 type Mod struct {
 	ID           int64  `json:"id"`
-	ModID        string `json:"mod_id"`               // e.g. "user/osint-cve-deepdive"
+	ModID        string `json:"mod_id"` // e.g. "user/osint-cve-deepdive"
 	Name         string `json:"name"`
-	Version      string `json:"version"`              // semver
-	Source       string `json:"source"`               // user:<path> | registry:<url>
-	ManifestJSON string `json:"manifest_json"`        // parsed mod.toml
+	Version      string `json:"version"`       // semver
+	Source       string `json:"source"`        // user:<path> | registry:<url>
+	ManifestJSON string `json:"manifest_json"` // parsed mod.toml
 	SHA256       string `json:"sha256"`
-	RiskClass    string `json:"risk_class,omitempty"`          // research-only | active-probing | exploit-development
-	TargetScope  string `json:"target_scope,omitempty"`        // public_internet | private_infrastructure | darkweb
+	RiskClass    string `json:"risk_class,omitempty"`   // research-only | active-probing | exploit-development
+	TargetScope  string `json:"target_scope,omitempty"` // public_internet | private_infrastructure | darkweb
 	RequiresTor  bool   `json:"requires_tor"`
 	CreatedAt    string `json:"created_at"`
 	UpdatedAt    string `json:"updated_at,omitempty"`

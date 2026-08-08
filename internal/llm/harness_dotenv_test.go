@@ -112,7 +112,7 @@ func TestIsNetworkError(t *testing.T) {
 		{errorString("dial tcp 127.0.0.1:8901: connectex: No connection could be made"), true},
 		{errorString("Post \"http://x/v1\": dial tcp: lookup x: no such host"), true},
 		{errorString("llm: http 401: invalid x-api-key"), false}, // 4xx is NOT a network error
-		{errorString("llm: http 503: backend down"), false},     // 5xx is NOT a network error (caught by shouldFallback)
+		{errorString("llm: http 503: backend down"), false},      // 5xx is NOT a network error (caught by shouldFallback)
 	}
 	for _, tc := range tests {
 		got := isNetworkError(tc.err)
@@ -155,11 +155,11 @@ func TestComplete_FallsBackToHarnessOnNetworkError(t *testing.T) {
 	scrapperURL := "http://127.0.0.1:1"
 
 	c := &Client{
-		BaseURL:  scrapperURL,
-		APIKey:   "ds-managed",
-		Model:    "MiniMax-M3",
-		Provider: ProviderAnthropic,
-		HTTP:     &http.Client{Timeout: 5 * 1e9}, // 5s in nanoseconds
+		BaseURL:               scrapperURL,
+		APIKey:                "ds-managed",
+		Model:                 "MiniMax-M3",
+		Provider:              ProviderAnthropic,
+		HTTP:                  &http.Client{Timeout: 5 * 1e9}, // 5s in nanoseconds
 		HarnessDotenvKey:      "sk-direct-1234",
 		HarnessDotenvProvider: ProviderAnthropic,
 	}

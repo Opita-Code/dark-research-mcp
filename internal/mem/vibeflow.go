@@ -210,7 +210,7 @@ func (s *Store) GetArtifact(ctx context.Context, id int64) (*Artifact, error) {
 	var a Artifact
 	var (
 		sessionID, artifactURL, brandID, jurisdiction sql.NullString
-		specID, hasDisclosure                              sql.NullInt64
+		specID, hasDisclosure                         sql.NullInt64
 	)
 	if err := row.Scan(&a.ID, &sessionID, &a.VibeCase, &specID, &artifactURL, &a.ArtifactType,
 		&brandID, &jurisdiction, &hasDisclosure, &a.ValidationStatus, &a.CreatedAt); err != nil {
@@ -432,7 +432,7 @@ func (s *Store) LatestDriftForArtifact(ctx context.Context, artifactID int64) (*
 		 FROM vibe_drift_reports WHERE artifact_id = ? ORDER BY id DESC LIMIT 1`, artifactID)
 	var d DriftReport
 	var (
-		specID, specDiff, reasoning, reconciled               sql.NullString
+		specID, specDiff, reasoning, reconciled sql.NullString
 	)
 	if err := row.Scan(&d.ID, &d.ArtifactID, &specID, &d.Verdict, &specDiff, &reasoning, &reconciled, &d.CreatedAt); err != nil {
 		if err == sql.ErrNoRows {
@@ -635,7 +635,7 @@ func (s *Store) ListArtifacts(ctx context.Context, vibeCase, brandID, jurisdicti
 		var a Artifact
 		var (
 			sessionIDNS, artifactURL, brandIDNS, jurisdictionNS sql.NullString
-			specID, hasDisclosure                                  sql.NullInt64
+			specID, hasDisclosure                               sql.NullInt64
 		)
 		if err := rows.Scan(&a.ID, &sessionIDNS, &a.VibeCase, &specID, &artifactURL,
 			&a.ArtifactType, &brandIDNS, &jurisdictionNS, &hasDisclosure,

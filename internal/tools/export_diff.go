@@ -187,14 +187,14 @@ func memDiffTool() Tool {
 			}
 			onlyA, onlyB, shared := diffItemsByTitle(a, b)
 			return jsonResult(map[string]any{
-				"run_a_id":       args.RunA,
-				"run_b_id":       args.RunB,
-				"count_only_a":   len(onlyA),
-				"count_only_b":   len(onlyB),
-				"count_shared":   len(shared),
-				"only_in_run_a":  onlyA,
-				"only_in_run_b":  onlyB,
-				"shared":         shared,
+				"run_a_id":      args.RunA,
+				"run_b_id":      args.RunB,
+				"count_only_a":  len(onlyA),
+				"count_only_b":  len(onlyB),
+				"count_shared":  len(shared),
+				"only_in_run_a": onlyA,
+				"only_in_run_b": onlyB,
+				"shared":        shared,
 			}), nil
 		},
 	}

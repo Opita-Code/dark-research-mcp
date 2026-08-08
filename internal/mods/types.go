@@ -70,9 +70,9 @@ const (
 type TargetScope string
 
 const (
-	TargetScopePublicInternet       TargetScope = "public_internet"
+	TargetScopePublicInternet        TargetScope = "public_internet"
 	TargetScopePrivateInfrastructure TargetScope = "private_infrastructure"
-	TargetScopeDarkweb              TargetScope = "darkweb"
+	TargetScopeDarkweb               TargetScope = "darkweb"
 	TargetScopeLocalOnly             TargetScope = "local_only"
 )
 
@@ -81,13 +81,13 @@ const (
 // The (mod_id) alone is the unique key in the `mods` table
 // (versions are immutable; upgrading means replacing the row).
 type Meta struct {
-	ID          string `toml:"id"          json:"mod_id"`
-	Name        string `toml:"name"        json:"name"`
-	Version     string `toml:"version"     json:"version"`
-	Author      string `toml:"author"      json:"author,omitempty"`
-	License     string `toml:"license"     json:"license,omitempty"`
-	Description string `toml:"description" json:"description,omitempty"`
-	Homepage    string `toml:"homepage"    json:"homepage,omitempty"`
+	ID          string   `toml:"id"          json:"mod_id"`
+	Name        string   `toml:"name"        json:"name"`
+	Version     string   `toml:"version"     json:"version"`
+	Author      string   `toml:"author"      json:"author,omitempty"`
+	License     string   `toml:"license"     json:"license,omitempty"`
+	Description string   `toml:"description" json:"description,omitempty"`
+	Homepage    string   `toml:"homepage"    json:"homepage,omitempty"`
 	Tags        []string `toml:"tags"      json:"tags,omitempty"`
 }
 
@@ -203,10 +203,10 @@ type DirectiveItem struct {
 // the filesystem.
 type Loaded struct {
 	Manifest   Manifest
-	Path       string          // absolute path to the mod root
-	SHA256     string          // SHA256 of mod.toml
+	Path       string // absolute path to the mod root
+	SHA256     string // SHA256 of mod.toml
 	LoadedAt   time.Time
-	Source     Source          // user or registry
+	Source     Source // user or registry
 	Knowledge  []KnowledgeItem
 	Directives []DirectiveItem
 }

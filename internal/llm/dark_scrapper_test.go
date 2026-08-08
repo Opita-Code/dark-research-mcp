@@ -1,4 +1,4 @@
-﻿package llm
+package llm
 
 import (
 	"os"
@@ -87,7 +87,7 @@ func TestNewFromEnv_DarkScrapper(t *testing.T) {
 		// Even if SDD_LLM_BASE_URL is set, DARK_SCRAPPER_URL wins.
 		resetLLMEnv(t, map[string]string{
 			"DARK_SCRAPPER_URL": "http://127.0.0.1:8901",
-			"SDD_LLM_BASE_URL":   "https://api.openai.com/v1",
+			"SDD_LLM_BASE_URL":  "https://api.openai.com/v1",
 		})
 		c := NewFromEnv()
 		if c == nil || !strings.HasPrefix(c.BaseURL, "http://127.0.0.1:8901") {

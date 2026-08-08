@@ -59,13 +59,18 @@ func (e *SafetyError) Error() string {
 }
 
 var (
-	ErrSchemeBlocked     = errors.New("URL scheme not allowed")
-	ErrNoHost            = errors.New("URL has no host")
-	ErrEmbeddedCreds     = errors.New("URL contains embedded credentials")
-	ErrBlockedIP         = errors.New("URL resolves to blocked IP range")
-	ErrPrivateLiteral    = errors.New("URL uses an IP literal that is private/reserved")
-	ErrInvalidURL        = errors.New("URL parse error")
+	ErrSchemeBlocked  = errors.New("URL scheme not allowed")
+	ErrNoHost         = errors.New("URL has no host")
+	ErrEmbeddedCreds  = errors.New("URL contains embedded credentials")
+	ErrBlockedIP      = errors.New("URL resolves to blocked IP range")
+	ErrPrivateLiteral = errors.New("URL uses an IP literal that is private/reserved")
+	ErrInvalidURL     = errors.New("URL parse error")
 )
+
+// lookupHost resolves a hostname to its addresses. It is a var so
+// tests can stub it without real DNS (mirrors the Getenv pattern in
+// internal/research/router.go). Production behavior is net.LookupHost.
+var lookupHost = net.LookupHost
 
 // ValidateURL checks a URL for SSRF-safety:
 //
@@ -106,21 +111,33 @@ func ValidateURL(raw string, allowLoopback bool) (*url.URL, error) {
 		return u, nil
 	}
 
-	// Domain case: resolve via stdlib
-	addrs, err := net.LookupHost(host)
+	// Domain case: resolve via stdlib (or the test stub).
+	addrs, err := lookupHost(host)
 	if err != nil {
 		return nil, fmt.Errorf("%w: lookup %s: %v", ErrNoHost, host, err)
 	}
+	if err := checkResolved(addrs, allowLoopback); err != nil {
+		return nil, err
+	}
+	return u, nil
+}
+
+// checkResolved validates every resolved address against the blocked
+// ranges. Non-IP entries are skipped defensively — a resolver should
+// never return garbage, but a malformed entry must not abort the loop.
+// Extracted from ValidateURL so the blocking logic is testable without
+// DNS.
+func checkResolved(addrs []string, allowLoopback bool) error {
 	for _, a := range addrs {
 		ip := net.ParseIP(a)
 		if ip == nil {
 			continue
 		}
 		if err := checkIP(ip, allowLoopback); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	return u, nil
+	return nil
 }
 
 func checkIP(ip net.IP, allowLoopback bool) error {

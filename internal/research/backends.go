@@ -83,13 +83,13 @@ type Item struct {
 
 // Result is what the router returns to the caller.
 type Result struct {
-	Intent        Intent `json:"intent"`
-	Query         string `json:"query"`
-	BackendUsed   string `json:"backend_used"`
-	BackendsTried []string `json:"backends_tried"`
-	Took          time.Duration `json:"took_ms"`
+	Intent        Intent         `json:"intent"`
+	Query         string         `json:"query"`
+	BackendUsed   string         `json:"backend_used"`
+	BackendsTried []string       `json:"backends_tried"`
+	Took          time.Duration  `json:"took_ms"`
 	Errors        []BackendError `json:"errors,omitempty"`
-	Items         []Item `json:"results"`
+	Items         []Item         `json:"results"`
 
 	// Summary (v0.8.1+) is an optional one-paragraph analyst summary
 	// produced by the LLM when EnableSynthesize is true AND the

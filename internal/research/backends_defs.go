@@ -397,10 +397,10 @@ func parseBraveWeb(body []byte) ([]Item, error) {
 func parseOpenAlex(body []byte) ([]Item, error) {
 	var resp struct {
 		Results []struct {
-			ID              string `json:"id"`
-			Title           string `json:"title"`
-			PublicationDate string `json:"publication_date"`
-			Doi             string `json:"doi"`
+			ID                    string           `json:"id"`
+			Title                 string           `json:"title"`
+			PublicationDate       string           `json:"publication_date"`
+			Doi                   string           `json:"doi"`
 			AbstractInvertedIndex map[string][]any `json:"abstract_inverted_index"`
 		} `json:"results"`
 	}
@@ -463,9 +463,9 @@ func parseArxiv(body []byte) ([]Item, error) {
 func parseSemanticScholar(body []byte) ([]Item, error) {
 	var resp struct {
 		Data []struct {
-			PaperID string `json:"paperId"`
-			Title   string `json:"title"`
-			URL     string `json:"url"`
+			PaperID  string `json:"paperId"`
+			Title    string `json:"title"`
+			URL      string `json:"url"`
 			Abstract string `json:"abstract"`
 		} `json:"data"`
 	}
@@ -548,8 +548,8 @@ func parseNPM(body []byte) ([]Item, error) {
 func parseGitHubSearch(body []byte) ([]Item, error) {
 	var resp struct {
 		Items []struct {
-			FullName string  `json:"full_name"`
-			HTMLURL  string  `json:"html_url"`
+			FullName    string `json:"full_name"`
+			HTMLURL     string `json:"html_url"`
 			Description string `json:"description"`
 		} `json:"items"`
 	}
@@ -569,12 +569,12 @@ func parseGitHubSearch(body []byte) ([]Item, error) {
 // parseOSV handles GET /v1/vulns/{id} (single vuln response).
 func parseOSV(body []byte) ([]Item, error) {
 	var v struct {
-		ID        string `json:"id"`
-		Summary   string `json:"summary"`
-		Details   string `json:"details"`
+		ID        string   `json:"id"`
+		Summary   string   `json:"summary"`
+		Details   string   `json:"details"`
 		Aliases   []string `json:"aliases"`
-		Modified  string `json:"modified"`
-		Published string `json:"published"`
+		Modified  string   `json:"modified"`
+		Published string   `json:"published"`
 		Severity  []struct {
 			Type  string `json:"type"`
 			Score string `json:"score"`
@@ -650,16 +650,16 @@ func parseRDAP(body []byte) ([]Item, error) {
 	// RDAP is a self-describing JSON; we only surface the most useful
 	// fields. A full RDAP client would emit the whole structure.
 	var resp struct {
-		LDHName    string `json:"ldhName"`
-		Handle     string `json:"handle"`
-		Status     []string `json:"status"`
-		Events    []struct {
+		LDHName string   `json:"ldhName"`
+		Handle  string   `json:"handle"`
+		Status  []string `json:"status"`
+		Events  []struct {
 			EventAction string `json:"eventAction"`
 			EventDate   string `json:"eventDate"`
 		} `json:"events"`
 		Entities []struct {
-			Roles    []string `json:"roles"`
-			VCardArray []any `json:"vcardArray"`
+			Roles      []string `json:"roles"`
+			VCardArray []any    `json:"vcardArray"`
 		} `json:"entities"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
@@ -736,19 +736,19 @@ func parseCrtsh(body []byte) ([]Item, error) {
 
 func parseIPAPI(body []byte) ([]Item, error) {
 	var resp struct {
-		Status    string  `json:"status"`
-		Country   string  `json:"country"`
-		CountryCode string `json:"countryCode"`
-		Region    string  `json:"regionName"`
-		City      string  `json:"city"`
-		Zip       string  `json:"zip"`
-		Lat       float64 `json:"lat"`
-		Lon       float64 `json:"lon"`
-		Timezone  string  `json:"timezone"`
-		ISP       string  `json:"isp"`
-		Org       string  `json:"org"`
-		AS        string  `json:"as"`
-		Query     string  `json:"query"`
+		Status      string  `json:"status"`
+		Country     string  `json:"country"`
+		CountryCode string  `json:"countryCode"`
+		Region      string  `json:"regionName"`
+		City        string  `json:"city"`
+		Zip         string  `json:"zip"`
+		Lat         float64 `json:"lat"`
+		Lon         float64 `json:"lon"`
+		Timezone    string  `json:"timezone"`
+		ISP         string  `json:"isp"`
+		Org         string  `json:"org"`
+		AS          string  `json:"as"`
+		Query       string  `json:"query"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, err
@@ -788,13 +788,13 @@ func parseRIPE(body []byte) ([]Item, error) {
 			}
 		}
 		out = append(out, Item{
-			Title:   kv["inetnum"],
-			URL:     "https://apps.db.ripe.net/db-web-ui/query",
+			Title: kv["inetnum"],
+			URL:   "https://apps.db.ripe.net/db-web-ui/query",
 			Snippet: fmt.Sprintf("inetnum=%s netname=%s descr=%s country=%s",
 				kv["inetnum"], kv["netname"], kv["descr"], kv["country"]),
-			Score:   1.0,
-			Source:  "ripe",
-			Raw:     map[string]any{"row": kv},
+			Score:  1.0,
+			Source: "ripe",
+			Raw:    map[string]any{"row": kv},
 		})
 	}
 	return out, nil
@@ -803,15 +803,15 @@ func parseRIPE(body []byte) ([]Item, error) {
 func parseAbuseCH(body []byte) ([]Item, error) {
 	// URLhaus API returns a list of URLs for the queried host.
 	var resp struct {
-		Query    string `json:"query"`
-		URLs     []struct {
-			ID          string `json:"id"`
-			URL         string `json:"url"`
-			URLStatus   string `json:"url_status"`
-			DateAdded   string `json:"dateadded"`
-			Threat      string `json:"threat"`
-			Tags        []string `json:"tags"`
-			Reporter    string `json:"reporter"`
+		Query string `json:"query"`
+		URLs  []struct {
+			ID        string   `json:"id"`
+			URL       string   `json:"url"`
+			URLStatus string   `json:"url_status"`
+			DateAdded string   `json:"dateadded"`
+			Threat    string   `json:"threat"`
+			Tags      []string `json:"tags"`
+			Reporter  string   `json:"reporter"`
 		} `json:"urls"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
@@ -971,6 +971,7 @@ func parseWayback(body []byte) ([]Item, error) {
 // stripTags removes HTML tags from s. Lightweight; for production use
 // ammonia/bluemonday.
 var tagRe = regexp.MustCompile(`<[^>]+>`)
+
 func stripTags(s string) string {
 	return tagRe.ReplaceAllString(s, "")
 }

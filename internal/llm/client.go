@@ -26,17 +26,17 @@ const (
 
 // Client is a minimal LLM client compatible with Anthropic or OpenAI APIs.
 type Client struct {
-	BaseURL    string // e.g. https://api.minimax.io/anthropic or http://127.0.0.1:8088/v1
-	APIKey     string
-	Model      string // e.g. MiniMax-M3 or Qwen3.5-9B
-	Provider   string // "anthropic" (default) or "openai"
-	HTTP       *http.Client
-	Cache      *Cache // optional file-backed JSON cache; nil = no caching
+	BaseURL  string // e.g. https://api.minimax.io/anthropic or http://127.0.0.1:8088/v1
+	APIKey   string
+	Model    string // e.g. MiniMax-M3 or Qwen3.5-9B
+	Provider string // "anthropic" (default) or "openai"
+	HTTP     *http.Client
+	Cache    *Cache // optional file-backed JSON cache; nil = no caching
 	// Optional fallback: if the primary key/baseURL returns 429 (rate limited)
 	// or 401 (revoked) or 5xx (server error), automatically retry with the
 	// fallback credentials. Both fallback key and base URL must be configured.
-	FallbackAPIKey   string
-	FallbackBaseURL  string
+	FallbackAPIKey  string
+	FallbackBaseURL string
 	// HarnessDotenvKey is the direct-provider API key recovered from
 	// the parent harness's env (Windows registry, $HOME/.env, project
 	// .env, opencode.jsonc, claude settings.json). Used as the ULTIMATE

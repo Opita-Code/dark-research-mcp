@@ -5,7 +5,10 @@
 package tools
 
 import (
+	"context"
+
 	"github.com/dark-agents/research-mcp/internal/config"
+	"github.com/dark-agents/research-mcp/internal/llm"
 	"github.com/dark-agents/research-mcp/internal/mem"
 	"github.com/dark-agents/research-mcp/internal/mods"
 	"github.com/dark-agents/research-mcp/internal/research"
@@ -42,14 +45,53 @@ func Register(s *server.MCPServer, cfg config.Config, deps Deps) error {
 	shared.router = research.NewRouter(research.DefaultRegistry(), nil)
 	if shared.mem != nil {
 		shared.router.SetMem(shared.mem)
+		// v0.8.1 persistence-aware recall: wire the full persistence
+		// layer (LatestRunByQuery + ListResearchItems) so the router
+		// can serve within-TTL runs from cache. This was the v0.8.1
+		// regression: the setters existed but no production call-site
+		// invoked them, so the deployed binary always ran with
+		// EnableCache=false (finding dark-research #465).
+		shared.router.SetMemStore(shared.mem)
+		if cfg.Research.EnableCache {
+			shared.router.SetEnableCache(true)
+		}
 	}
 	if shared.session != "" {
 		shared.router.SetSession(shared.session)
+	}
+	// v0.8.1 optional LLM synthesis. Opt-in via config
+	// (research.enable_synthesize). llm.NewFromEnv degrades to nil when
+	// no API key is reachable; the router skips synthesis when the
+	// client is nil, so an operator flipping the flag without a key
+	// still gets correct (non-synthesized) results.
+	if cfg.Research.EnableSynthesize {
+		if c := llm.NewFromEnv(); c != nil {
+			shared.router.SetLLMClient(llmClientAdapter{c: c})
+			shared.router.SetEnableSynthesize(true)
+		}
 	}
 	for _, t := range wrapAll(All(cfg)) {
 		s.AddTool(t.Definition, t.Handler)
 	}
 	return nil
+}
+
+// llmClientAdapter adapts *llm.Client to research.LLMClient.
+//
+// The v0.8.1 release notes claimed *llm.Client satisfies
+// research.LLMClient directly ("router.SetLLMClient(llm.NewFromEnv())"),
+// but that code never compiled: the Complete signatures differ
+// (llm.Message vs research.LLMMessage). This adapter is the
+// compile-tested bridge. research keeps its minimal interface so the
+// router stays decoupled from the llm package.
+type llmClientAdapter struct{ c *llm.Client }
+
+func (a llmClientAdapter) Complete(ctx context.Context, system string, msgs ...research.LLMMessage) (string, error) {
+	llmMsgs := make([]llm.Message, 0, len(msgs))
+	for _, m := range msgs {
+		llmMsgs = append(llmMsgs, llm.Message{Role: m.Role, Content: m.Content})
+	}
+	return a.c.Complete(ctx, system, llmMsgs...)
 }
 
 // sharedMods returns the mods registry (or nil if not registered).
@@ -151,7 +193,9 @@ func newClients(cfg config.Config) *clients {
 // sharedRouter returns the singleton router (after Register ran). Tool
 // handlers that want to invoke the router should call this rather than
 // constructing their own — that way persistence and session id are
-// consistent across the binary.
+// consistent across the binary. NOTE: cache/synthesis wiring lives in
+// Register (production path); this fallback is test-only and stays
+// minimal so tests don't accidentally hit the within-TTL cache.
 func sharedRouter() *research.Router {
 	if shared.router == nil {
 		shared.router = research.NewRouter(research.DefaultRegistry(), nil)

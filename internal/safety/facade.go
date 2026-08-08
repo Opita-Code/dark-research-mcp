@@ -110,11 +110,20 @@ func (d *Defense) CanaryString() string {
 }
 
 // Stats returns a snapshot of the defense state for diagnostics.
+// It is safe on a zero-value Defense (nil sub-components render
+// as zero values rather than panicking).
 func (d *Defense) Stats() string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return fmt.Sprintf("canary=%s calls=%d anomalies=active",
-		d.Canary.String()[:24]+"...", d.Limiter.Count())
+	canary := d.Canary.String()
+	if len(canary) > 24 {
+		canary = canary[:24] + "..."
+	}
+	calls := 0
+	if d.Limiter != nil {
+		calls = d.Limiter.Count()
+	}
+	return fmt.Sprintf("canary=%s calls=%d anomalies=active", canary, calls)
 }
 
 // ---------------------------------------------------------------------------

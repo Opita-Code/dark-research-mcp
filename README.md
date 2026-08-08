@@ -1,4 +1,4 @@
-# dark-research-mcp v0.8.0 — OSINT backing for the dark-agents ecosystem
+# dark-research-mcp v0.9.0 — OSINT backing for the dark-agents ecosystem
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -10,7 +10,7 @@
 │  ╚██████╔╝╚██████╗██████╔╝██║  ██║    ██║ ╚═╝ ██║╚██████╗██║                 │
 │   ╚═════╝  ╚═════╝╚═════╝ ╚═╝  ╚═╝    ╚═╝     ╚═╝ ╚═════╝╚═╝                 │
 │                                                                              │
-│                       Opita Code Dark Research MCP v0.8.0                    │
+│                       Opita Code Dark Research MCP v0.9.0                    │
 │                                                                              │
 │          OSINT backing • 13 intents • cx.v3 conformance • MIT                │
 │                                                                              │
@@ -21,7 +21,7 @@
 
 [![MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go 1.25+](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](go.mod)
-[![Version](https://img.shields.io/badge/version-0.8.0-blue)](RELEASE_NOTES_v0.8.0.md)
+[![Version](https://img.shields.io/badge/version-0.9.0-blue)](CHANGELOG.md)
 [![Coexistence](https://img.shields.io/badge/cx.v3-dark--agents%2Fresearch-blueviolet)](https://github.com/Opita-Code/dark-memory-mcp/blob/main/vibe-flow/main/BRIDGE_AND_COEXISTENCE.md)
 [![Backing](https://img.shields.io/badge/policy_gateway-false-lightgrey)](https://github.com/Opita-Code/dark-memory-mcp/blob/main/vibe-flow/main/BRIDGE_AND_COEXISTENCE.md)
 
@@ -113,7 +113,7 @@ Ambos servidores escriben al mismo `dark.db` (SQLite), en tablas distintas:
 
 ```bash
 # 1. Compila
-go build -ldflags "-X main.version=0.8.0" -o dark-research-mcp.exe ./cmd/dark-research-mcp
+go build -ldflags "-X github.com/dark-agents/research-mcp/internal/version.buildVersion=0.9.0" -o dark-research-mcp.exe ./cmd/dark-research-mcp
 
 # 2. Configura el DB (compartido con dark-memory)
 export DARK_DB="$LOCALAPPDATA/dark-agents/dark.db"
@@ -149,7 +149,9 @@ Compatible con OpenCode, Claude Code, Cursor, Aider, Cline — todos los harness
 
 - **Normativo**: [`BRIDGE_AND_COEXISTENCE.md`](https://github.com/Opita-Code/dark-memory-mcp/blob/main/vibe-flow/main/BRIDGE_AND_COEXISTENCE.md) v2.0.0 (dark-memory-mcp repo)
 - **Drift report**: [`DRIFT_BURST.md`](https://github.com/Opita-Code/dark-memory-mcp/blob/main/vibe-flow/main/DRIFT_BURST.md)
-- **Release notes v0.8.0**: [`RELEASE_NOTES_v0.8.0.md`](RELEASE_NOTES_v0.8.0.md)
+- **Changelog**: [`CHANGELOG.md`](CHANGELOG.md) (Keep a Changelog, SemVer)
+- **Release**: `make release` (inyecta el tag vía `scripts/inject-version.sh`); `make drift-check` valida el estado antes de cortar tag
+- **Release notes**: [`RELEASE_NOTES_v0.8.1.md`](RELEASE_NOTES_v0.8.1.md), [`RELEASE_NOTES_v0.8.0.md`](RELEASE_NOTES_v0.8.0.md)
 - **Histórico**: [`RELEASE_NOTES_v0.7.1.md`](RELEASE_NOTES_v0.7.1.md), [`RELEASE_NOTES_v0.7.0.md`](RELEASE_NOTES_v0.7.0.md)
 
 ---
@@ -176,7 +178,7 @@ herramientas activas funcionan idéntico.
 
 ```bash
 git pull
-go build -ldflags "-X main.version=0.8.0" -o dark-research-mcp.exe ./cmd/dark-research-mcp
+go build -ldflags "-X github.com/dark-agents/research-mcp/internal/version.buildVersion=0.9.0" -o dark-research-mcp.exe ./cmd/dark-research-mcp
 # Windows: reemplaza el .exe y reinicia opencode (inode lock)
 ```
 

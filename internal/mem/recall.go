@@ -363,7 +363,7 @@ func (s *Store) ListResearchItems(ctx context.Context, runID int64, source strin
 		var it Item
 		var (
 			urlNS, snippetNS, freshNS, langNS, rawNS, createdNS sql.NullString
-			conf                                                 sql.NullFloat64
+			conf                                                sql.NullFloat64
 		)
 		if err := rows.Scan(&it.ID, &it.RunID, &it.Title, &urlNS, &snippetNS, &it.Source,
 			&conf, &freshNS, &langNS, &rawNS, &createdNS); err != nil {

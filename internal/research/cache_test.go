@@ -17,7 +17,7 @@ type mockCacheReader struct {
 	latency time.Duration
 
 	// Counters for assertion.
-	latestCalls  int
+	latestCalls   int
 	listingsCalls int
 }
 

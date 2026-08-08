@@ -17,10 +17,11 @@ import (
 )
 
 type Config struct {
-	Network NetworkConfig `toml:"network"`
-	Tor     TorConfig     `toml:"tor"`
-	Safety  SafetyConfig  `toml:"safety"`
-	Risk    RiskConfig    `toml:"risk"`
+	Network  NetworkConfig  `toml:"network"`
+	Tor      TorConfig      `toml:"tor"`
+	Safety   SafetyConfig   `toml:"safety"`
+	Risk     RiskConfig     `toml:"risk"`
+	Research ResearchConfig `toml:"research"`
 }
 
 type NetworkConfig struct {
@@ -48,6 +49,23 @@ type RiskConfig struct {
 	RequireConsentFor []string `toml:"require_consent_for"`
 }
 
+// ResearchConfig controls the v0.8.1 router features (persistence-aware
+// recall cache + optional LLM synthesis).
+//
+// EnableCache is ON by default: within-TTL recall of a prior run for the
+// same (query, intent) saves backend rate-limit consumption (ip-api
+// 45 req/min, NVD 5 req/30s) and avoids duplicate HTTP. Cache misses
+// fall through to the normal multi-backend fan-out, so enabling it is
+// low-risk.
+//
+// EnableSynthesize is OFF by default: each synthesized result costs one
+// LLM call per query. Operators opt in via TOML (research.enable_synthesize)
+// or the DARK_RESEARCH_ENABLE_SYNTHESIZE env override.
+type ResearchConfig struct {
+	EnableCache      bool `toml:"enable_cache"`
+	EnableSynthesize bool `toml:"enable_synthesize"`
+}
+
 // Defaults returns the platform-default configuration.
 func Defaults() Config {
 	return Config{
@@ -67,6 +85,10 @@ func Defaults() Config {
 		},
 		Risk: RiskConfig{
 			RequireConsentFor: []string{"onion_fetch", "email_osint"},
+		},
+		Research: ResearchConfig{
+			EnableCache:      true,  // persistence-aware recall: cheap win, saves rate limits
+			EnableSynthesize: false, // LLM call per query: opt-in
 		},
 	}
 }

@@ -202,17 +202,17 @@ func (s *Store) ListModLoads(ctx context.Context, modID string, limit int) ([]*M
 
 // ModRow is one row in the `mods` table.
 type ModRow struct {
-	ModID       string
-	Name        string
-	Version     string
-	Source      string
+	ModID        string
+	Name         string
+	Version      string
+	Source       string
 	ManifestJSON string
-	SHA256      string
-	RiskClass   string
-	TargetScope string
-	RequiresTor bool
-	CreatedAt   string
-	UpdatedAt   string
+	SHA256       string
+	RiskClass    string
+	TargetScope  string
+	RequiresTor  bool
+	CreatedAt    string
+	UpdatedAt    string
 }
 
 // ModLoadRow is one row in the `mod_loads` table.
@@ -237,12 +237,12 @@ type rowScanner interface {
 
 func scanModRow(s rowScanner) (*ModRow, error) {
 	var (
-		m          ModRow
-		riskClass  sql.NullString
-		scope      sql.NullString
-		requiresT  int
-		createdAt  string
-		updatedAt  sql.NullString
+		m         ModRow
+		riskClass sql.NullString
+		scope     sql.NullString
+		requiresT int
+		createdAt string
+		updatedAt sql.NullString
 	)
 	if err := s.Scan(
 		&m.ModID, &m.Name, &m.Version, &m.Source, &m.ManifestJSON, &m.SHA256,
@@ -266,10 +266,10 @@ func scanModRow(s rowScanner) (*ModRow, error) {
 
 func scanModLoadRow(s rowScanner) (*ModLoadRow, error) {
 	var (
-		m          ModLoadRow
-		sessionID  sql.NullString
-		errStr     sql.NullString
-		constID    sql.NullString
+		m         ModLoadRow
+		sessionID sql.NullString
+		errStr    sql.NullString
+		constID   sql.NullString
 	)
 	if err := s.Scan(
 		&m.ID, &m.ModID, &sessionID, &m.LoadedAt, &m.DurationMs,

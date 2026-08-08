@@ -8,7 +8,7 @@
 // the env (e.g. opencode.jsonc with explicit empty values wipes the
 // parent shell's ANTHROPIC_API_KEY, leaving the MCP unconfigured).
 //
-// Why this exists
+// # Why this exists
 //
 // Without LoadHarnessDotenv, the LLM client is stuck if:
 //   - DARK_SCRAPPER_URL is set but the daemon is down (connection
@@ -26,16 +26,16 @@
 //
 // Source priority (first non-empty wins per KEY)
 //
-//   1. HKCU\Environment on Windows / $HOME env on Unix  (parent user-level)
-//   2. $HOME/.env                                       (operator's global .env)
-//   3. <project-root>/.env                              (project .env)
-//   4. OpenCode config: $XDG_CONFIG_HOME/opencode/opencode.jsonc (or
-//      %APPDATA%\opencode\opencode.jsonc on Windows). The `environment`
-//      block. We accept non-empty values only — empty string is
-//      treated as "wiped by harness" and skipped.
-//   5. Claude Code config: $XDG_CONFIG_HOME/claude/settings.json (or
-//      %APPDATA%\claude\settings.json on Windows). The `env` block
-//      (Anthropic-Code-style flat object).
+//  1. HKCU\Environment on Windows / $HOME env on Unix  (parent user-level)
+//  2. $HOME/.env                                       (operator's global .env)
+//  3. <project-root>/.env                              (project .env)
+//  4. OpenCode config: $XDG_CONFIG_HOME/opencode/opencode.jsonc (or
+//     %APPDATA%\opencode\opencode.jsonc on Windows). The `environment`
+//     block. We accept non-empty values only — empty string is
+//     treated as "wiped by harness" and skipped.
+//  5. Claude Code config: $XDG_CONFIG_HOME/claude/settings.json (or
+//     %APPDATA%\claude\settings.json on Windows). The `env` block
+//     (Anthropic-Code-style flat object).
 //
 // The .env parser is intentionally minimal: KEY=VALUE, optional
 // double-quotes, optional comments with #. We do NOT support

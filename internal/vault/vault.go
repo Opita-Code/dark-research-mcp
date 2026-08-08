@@ -100,9 +100,17 @@ func ValidateName(name string) error {
 // not yet implemented, the binary still boots — graceful degradation
 // is the contract here, not full functionality.
 func LoadIntoEnv(names []string) error {
-	v := Open()
+	return loadIntoEnvWith(Open(), names, os.Getenv, os.Setenv)
+}
+
+// loadIntoEnvWith is LoadIntoEnv's policy with injectable vault, getenv
+// and setenv. Extracted so the policy logic is testable deterministically
+// without the Windows-only PowerShell backend (the mutation-testing
+// target for this package). Production calls LoadIntoEnv, which wires
+// Open/os.Getenv/os.Setenv.
+func loadIntoEnvWith(v Vault, names []string, getenv func(string) string, setenv func(string, string) error) error {
 	for _, name := range names {
-		if os.Getenv(name) != "" {
+		if getenv(name) != "" {
 			continue // caller-provided, don't override
 		}
 		val, err := v.Get(name)
@@ -112,7 +120,7 @@ func LoadIntoEnv(names []string) error {
 			}
 			return fmt.Errorf("vault: load %s: %w", name, err)
 		}
-		if err := os.Setenv(name, val); err != nil {
+		if err := setenv(name, val); err != nil {
 			return fmt.Errorf("vault: setenv %s: %w", name, err)
 		}
 	}

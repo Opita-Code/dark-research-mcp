@@ -17,17 +17,20 @@ import (
 
 	"github.com/dark-agents/research-mcp/internal/mem"
 	"github.com/dark-agents/research-mcp/internal/safety"
+	versionpkg "github.com/dark-agents/research-mcp/internal/version"
 )
 
 // Getenv reads an env var. Exposed as a var so tests can stub it.
 var Getenv = os.Getenv
 
 // Version is stamped into the User-Agent on every outbound request.
-// Defaults to "dev"; the release build sets it via -ldflags
-// "-X github.com/dark-agents/research-mcp/internal/research.Version=0.8.0".
-// Backends that fingerprint by user-agent see one consistent string
-// per binary.
-var Version = "dev"
+// It resolves from internal/version at call time: the release build
+// injects the canonical git tag via -ldflags (`make release`), and a
+// plain build falls back to "dev" or the module version. Backends
+// that fingerprint by user-agent see one consistent string per binary.
+func Version() string {
+	return versionpkg.Resolve().Version
+}
 
 // MemSink is the interface dark-mem must satisfy for the router to
 // persist runs. Defined here to avoid an import cycle (research does
@@ -378,7 +381,7 @@ func (r *Router) call(ctx context.Context, b Backend, query string) ([]byte, err
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "dark-research-mcp/"+Version+" (+https://github.com/dark-agents/research-mcp)")
+	req.Header.Set("User-Agent", "dark-research-mcp/"+Version()+" (+https://github.com/dark-agents/research-mcp)")
 	req.Header.Set("Accept", "application/json, text/html;q=0.9")
 
 	if b.Auth != "" {

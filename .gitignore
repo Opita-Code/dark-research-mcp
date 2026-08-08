@@ -48,3 +48,20 @@ debug_test.go
 debug_detect_test.go
 test_minimal.toml
 test_minimal_mod.go
+
+# Local dev scripts / logs (never publish)
+*.bak
+*.bak-*
+mock-llm.*.log
+mock-llm.err.log
+mock-llm.out.log
+oc.bat
+opencode-with-vault.*
+verify-llm-pipeline.*
+dark-agents-harvest-now.ps1
+dark-agents-watchdog.ps1
+tag-msg-*.txt
+report.json
+
+# Build output (make build / make release land here)
+/bin/

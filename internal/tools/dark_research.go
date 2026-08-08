@@ -117,10 +117,10 @@ type darkResearchMultiArgs struct {
 
 // MultiResult bundles per-intent results + the deduped union.
 type MultiResult struct {
-	Query      string                            `json:"query"`
-	PerIntent  map[string]*research.Result       `json:"per_intent"`
-	Deduped    []research.Item                   `json:"deduped"`
-	TotalFound int                               `json:"total_found"`
+	Query      string                      `json:"query"`
+	PerIntent  map[string]*research.Result `json:"per_intent"`
+	Deduped    []research.Item             `json:"deduped"`
+	TotalFound int                         `json:"total_found"`
 }
 
 func darkResearchMultiTool() Tool {
@@ -162,8 +162,8 @@ func darkResearchMultiTool() Tool {
 			r := newResearchRouter()
 			type slot struct {
 				intent research.Intent
-				res   *research.Result
-				err   error
+				res    *research.Result
+				err    error
 			}
 			results := make([]slot, len(intents))
 			var wg sync.WaitGroup

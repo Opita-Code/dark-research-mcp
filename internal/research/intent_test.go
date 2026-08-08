@@ -125,13 +125,13 @@ func TestClassify_default(t *testing.T) {
 
 func TestParseIntent(t *testing.T) {
 	cases := map[string]Intent{
-		"web":       IntentWeb,
-		"WEB":       IntentWeb,
-		"papers":    IntentAcademic,
-		"vuln":      IntentCVE,
-		"unknown":   "",
-		"":          "",
-		"  code  ":  IntentCode,
+		"web":      IntentWeb,
+		"WEB":      IntentWeb,
+		"papers":   IntentAcademic,
+		"vuln":     IntentCVE,
+		"unknown":  "",
+		"":         "",
+		"  code  ": IntentCode,
 	}
 	for in, want := range cases {
 		if got := ParseIntent(in); got != want {

@@ -128,9 +128,9 @@ func darkMemLinkTool() Tool {
 				return nil, err
 			}
 			return jsonResult(map[string]any{
-				"linked":     true,
-				"item_id":    args.ItemID,
-				"target":     fmt.Sprintf("%s:%s", args.TargetType, args.TargetID),
+				"linked":  true,
+				"item_id": args.ItemID,
+				"target":  fmt.Sprintf("%s:%s", args.TargetType, args.TargetID),
 			}), nil
 		},
 	}

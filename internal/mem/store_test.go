@@ -222,7 +222,7 @@ func TestLatestRunByQuery(t *testing.T) {
 // file without breaking.
 func TestMigrations_idempotent(t *testing.T) {
 	path := t.TempDir() + "/test.db"
-s1, err := Open(path)
+	s1, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
