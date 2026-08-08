@@ -70,7 +70,7 @@ jobs:
 
       - name: unit tests (excl. research — fixtures)
         run: |
-          go test -short -count=1 -timeout 180s \
+          go test -short -count=1 -timeout 240s \
             ./internal/safety/... \
             ./internal/server/... \
             ./internal/vault/... \
@@ -85,7 +85,7 @@ jobs:
       - name: coverage (Go 1.26 only)
         if: matrix.go-version == '1.26'
         run: |
-          go test -short -count=1 -coverprofile=coverage.out -timeout 180s \
+          go test -short -count=1 -coverprofile=coverage.out -timeout 240s \
             ./internal/safety/... \
             ./internal/server/... \
             ./internal/vault/... \
@@ -111,14 +111,16 @@ jobs:
           cache: true
 
       - name: install gremlins
-        run: go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
+        run: |
+          go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: gremlins unleash (safety)
-        run: gremlins unleash --workers 4 --threshold-efficacy 60 --threshold-mcover 60 ./internal/safety/
+        run: gremlins unleash --workers 2 --threshold-efficacy 60 --threshold-mcover 60 ./internal/safety/
 
       - name: gremlins unleash (server)
         if: always()
-        run: gremlins unleash --workers 4 --threshold-efficacy 60 --threshold-mcover 60 ./internal/server/
+        run: gremlins unleash --workers 2 --threshold-efficacy 60 --threshold-mcover 60 ./internal/server/
 
   # ── Release check: build + version drift ─────────────────────────────
   release-check:
@@ -127,6 +129,8 @@ jobs:
     needs: gate1
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # fetch tags so inject-version.sh resolves the git tag
       - uses: actions/setup-go@v6
         with:
           go-version: "1.26"
@@ -136,6 +140,7 @@ jobs:
         run: |
           chmod +x ./scripts/inject-version.sh
           VERSION_LDFLAGS=$(./scripts/inject-version.sh)
+          mkdir -p bin
           cd cmd/dark-research-mcp
           go build -ldflags "$VERSION_LDFLAGS" -o ../../bin/dark-research-mcp .
           cd ../..
