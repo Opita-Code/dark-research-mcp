@@ -21,6 +21,7 @@
 
 [![MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go 1.25+](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](go.mod)
+[![CI](https://github.com/Opita-Code/dark-research-mcp/actions/workflows/go-test.yml/badge.svg)](https://github.com/Opita-Code/dark-research-mcp/actions/workflows/go-test.yml)
 [![Version](https://img.shields.io/badge/version-0.9.0-blue)](CHANGELOG.md)
 [![Coexistence](https://img.shields.io/badge/cx.v3-dark--agents%2Fresearch-blueviolet)](https://github.com/Opita-Code/dark-memory-mcp/blob/main/vibe-flow/main/BRIDGE_AND_COEXISTENCE.md)
 [![Backing](https://img.shields.io/badge/policy_gateway-false-lightgrey)](https://github.com/Opita-Code/dark-memory-mcp/blob/main/vibe-flow/main/BRIDGE_AND_COEXISTENCE.md)

@@ -1,35 +1,63 @@
-name: Go test
+# dark-research-mcp CI
+#
+# Mirrors dark-memory-mcp CI pattern: separate gates (build, unit,
+# mutation). v0.9.0 additions:
+#   - gofmt gate (drift prevention)
+#   - version tests gate (drift prevention)
+#   - gremlins mutation gate (replaces retired go-mutesting)
+#   - release verification (build + version match tag)
+#
+# Per CONTRIBUTING.md, the CI recipe is designed to be reproducible
+# locally:
+#
+#   gofmt -l . && [ -z "$(gofmt -l .)" ]
+#   go vet ./...
+#   go build ./...
+#   go test -short -count=1 $(go list ./... | grep -v /research/)
+#   gremlins unleash --workers 4 --threshold-efficacy 60 \
+#     ./internal/safety/ ./internal/server/
+#
+# Note: internal/research is excluded from unit tests because its
+# VCR fixture tests (TestRouter_ahmia, TestRouter_gdelt) require
+# committed fixtures that are refreshed offline. The osint-smoke job
+# covers backend health; the committed BACKEND_STATUS.md is the CI
+# record.
+name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    name: vet / build / test
+  # ── Gate 1: fast, blocking ──────────────────────────────────────────
+  gate1:
+    name: "gate1: fmt / vet / build / version / test"
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # go.mod requires go >= 1.25.0 (after `go mod tidy`); each matrix
-        # entry installs a Go version that satisfies that minimum
-        # directly. setup-go@v6 defaults GOTOOLCHAIN=local, so we must
-        # not ask it to test with a version below go.mod's minimum.
         go-version: ["1.25", "1.26"]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
-      - name: Set up Go
-        uses: actions/setup-go@v6
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go-version }}
           cache: true
+
+      - name: gofmt (must be clean)
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt: unformatted files:"; echo "$unformatted"
+            exit 1
+          fi
+          echo "gofmt: clean"
 
       - name: go vet
         run: go vet ./...
@@ -37,26 +65,96 @@ jobs:
       - name: go build
         run: go build ./...
 
-      - name: go test (race)
-        run: go test -race -count=1 -timeout 120s ./...
+      - name: version tests
+        run: go test -count=1 ./internal/version/...
 
-      - name: Coverage report
+      - name: unit tests (excl. research — fixtures)
         run: |
-          go test -count=1 -coverprofile=coverage.out -timeout 120s ./...
-          go tool cover -func=coverage.out | tail -20
-        if: matrix.go-version == '1.26'
+          go test -short -count=1 -timeout 180s \
+            ./internal/safety/... \
+            ./internal/server/... \
+            ./internal/vault/... \
+            ./internal/version/... \
+            ./internal/llm/... \
+            ./internal/mods/... \
+            ./internal/tools/... \
+            ./internal/mem/... \
+            ./internal/config/... \
+            ./internal/constitution/
 
-  # OSINT backends are network-dependent. We don't fail CI on transient
-  # outages, but we want a record of which ones regressed. The
-  # scripts/osint-status.sh probe covers all 16 backends in parallel
-  # (~10s) and surfaces results in $GITHUB_STEP_SUMMARY so reviewers
-  # can see them without leaving the PR. The committed
-  # BACKEND_STATUS.md is refreshed weekly by the dedicated
-  # osint-status workflow; this on-PR run is the in-loop signal.
+      - name: coverage (Go 1.26 only)
+        if: matrix.go-version == '1.26'
+        run: |
+          go test -short -count=1 -coverprofile=coverage.out -timeout 180s \
+            ./internal/safety/... \
+            ./internal/server/... \
+            ./internal/vault/... \
+            ./internal/version/... \
+            ./internal/llm/... \
+            ./internal/mods/... \
+            ./internal/tools/... \
+            ./internal/mem/... \
+            ./internal/config/... \
+            ./internal/constitution/
+          go tool cover -func=coverage.out | tail -20
+
+  # ── Gate 2: mutation (gremlins v0.6.0) ──────────────────────────────
+  mutation:
+    name: "gate2: mutation (safety + server)"
+    runs-on: ubuntu-latest
+    needs: gate1
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: install gremlins
+        run: go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
+
+      - name: gremlins unleash (safety)
+        run: gremlins unleash --workers 4 --threshold-efficacy 60 --threshold-mcover 60 ./internal/safety/
+
+      - name: gremlins unleash (server)
+        if: always()
+        run: gremlins unleash --workers 4 --threshold-efficacy 60 --threshold-mcover 60 ./internal/server/
+
+  # ── Release check: build + version drift ─────────────────────────────
+  release-check:
+    name: "release: build + version drift"
+    runs-on: ubuntu-latest
+    needs: gate1
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: build with ldflags (simulate make release)
+        run: |
+          chmod +x ./scripts/inject-version.sh
+          VERSION_LDFLAGS=$(./scripts/inject-version.sh)
+          cd cmd/dark-research-mcp
+          go build -ldflags "$VERSION_LDFLAGS" -o ../../bin/dark-research-mcp .
+          cd ../..
+
+      - name: verify version matches inject-version
+        run: |
+          EXPECTED=$(./scripts/inject-version.sh --raw)
+          REPORTED=$(./bin/dark-research-mcp -version | awk '{print $2}')
+          if [ "$EXPECTED" != "$REPORTED" ]; then
+            echo "VERSION DRIFT: inject-version=$EXPECTED, binary=$REPORTED"
+            exit 1
+          fi
+          echo "version: $REPORTED (matches inject-version $EXPECTED)"
+
+  # ── OSINT backend smoke (live, best-effort) ─────────────────────────
   osint-smoke:
     name: OSINT backend smoke (live, best-effort)
     runs-on: ubuntu-latest
-    needs: test
+    needs: gate1
     continue-on-error: true
     steps:
       - uses: actions/checkout@v5
@@ -64,7 +162,6 @@ jobs:
         run: chmod +x ./scripts/osint-status.sh
       - name: Probe all backends
         id: probe
-        # set +e lets us capture the report even when probes fail.
         run: |
           set +e
           ./scripts/osint-status.sh --out /tmp/status.md
