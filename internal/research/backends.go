@@ -138,13 +138,23 @@ type Item struct {
 
 // Result is what the router returns to the caller.
 type Result struct {
-	Intent        Intent         `json:"intent"`
-	Query         string         `json:"query"`
-	BackendUsed   string         `json:"backend_used"`
-	BackendsTried []string       `json:"backends_tried"`
-	Took          time.Duration  `json:"took_ms"`
-	Errors        []BackendError `json:"errors,omitempty"`
-	Items         []Item         `json:"results"`
+	Intent        Intent   `json:"intent"`
+	Query         string   `json:"query"`
+	BackendUsed   string   `json:"backend_used"`
+	BackendsTried []string `json:"backends_tried"`
+	// TookMs is the wall-clock duration of the route, in MILLISECONDS.
+	//
+	// It used to be a `time.Duration` tagged `took_ms`, but
+	// encoding/json marshals a time.Duration as an integer count of
+	// NANOSECONDS — so a 350 ms call was published as 3473368300.
+	// The wire contract promises milliseconds and the research_runs
+	// .took_ms column stores milliseconds, so both sides must agree.
+	TookMs int64 `json:"took_ms"`
+	// Took is the same duration as a time.Duration, for in-process
+	// callers. Not serialised: "took_ms" is the wire key.
+	Took   time.Duration  `json:"-"`
+	Errors []BackendError `json:"errors,omitempty"`
+	Items  []Item         `json:"results"`
 
 	// Summary (v0.8.1+) is an optional one-paragraph analyst summary
 	// produced by the LLM when EnableSynthesize is true AND the

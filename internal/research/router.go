@@ -176,6 +176,7 @@ func (r *Router) Route(ctx context.Context, query string, intentHint Intent) (*R
 			res.BackendUsed = "cache"
 			res.BackendsTried = []string{"cache"}
 			res.Took = time.Since(started)
+			res.TookMs = res.Took.Milliseconds()
 			return res, nil
 		}
 	}
@@ -231,6 +232,7 @@ func (r *Router) Route(ctx context.Context, query string, intentHint Intent) (*R
 				case <-time.After(wait):
 				case <-ctx.Done():
 					res.Took = time.Since(started)
+					res.TookMs = res.Took.Milliseconds()
 					return res, ctx.Err()
 				}
 			}
@@ -286,6 +288,7 @@ func (r *Router) Route(ctx context.Context, query string, intentHint Intent) (*R
 	}
 	res.Items = merged
 	res.Took = time.Since(started)
+	res.TookMs = res.Took.Milliseconds()
 
 	if len(merged) == 0 {
 		if len(res.Errors) == 0 {

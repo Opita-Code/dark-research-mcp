@@ -10,10 +10,45 @@ package research
 // changes its response format.
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 )
+
+// TestResultTookIsMilliseconds pins the wire contract for the route
+// duration.
+//
+// Took used to be a time.Duration tagged `took_ms`, but encoding/json
+// marshals a time.Duration as an integer count of NANOSECONDS — so a
+// 350 ms call was published as 3473368300. The field name promises
+// milliseconds and the research_runs.took_ms column stores
+// milliseconds, so both sides must agree.
+func TestResultTookIsMilliseconds(t *testing.T) {
+	res := &Result{}
+	res.Took = 350 * time.Millisecond
+	res.TookMs = res.Took.Milliseconds()
+
+	b, err := json.Marshal(res)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(b, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	got, ok := decoded["took_ms"].(float64)
+	if !ok {
+		t.Fatalf("took_ms missing or not a number: %#v", decoded["took_ms"])
+	}
+	if got != 350 {
+		t.Errorf("took_ms = %v, want 350 (milliseconds, not nanoseconds)", got)
+	}
+	// The raw duration must not leak a second, conflicting key.
+	if _, dup := decoded["Took"]; dup {
+		t.Error("the raw time.Duration must not be serialised alongside took_ms")
+	}
+}
 
 func TestParseOSV(t *testing.T) {
 	body := []byte(`{
