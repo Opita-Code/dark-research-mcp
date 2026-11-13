@@ -1,28 +1,41 @@
 # OSINT backend status
 
-Last checked: `2026-07-11T19:26:54Z` UTC
+Last checked: `2026-11-13T10:45:00Z` UTC — **verified against the live upstreams**,
+not against the recorded fixtures.
 
-| Backend | Status | HTTP | Latency | Endpoint |
-|---------|:------:|:----:|--------:|----------|
-| arXiv | ✓ | 200 | 164ms | `http://export.arxiv.org/api/query?search_query=all:test&max_results=1` |
-| OSV (CVE) | ✓ | 200 | 636ms | `https://api.osv.dev/v1/vulns/CVE-2024-3094` |
-| crates.io | ✓ | 200 | 976ms | `https://crates.io/api/v1/crates/tokio` |
-| npm | ✓ | 200 | 418ms | `https://registry.npmjs.com/-/v1/search?text=react&size=1` |
-| OpenAlex | ✓ | 200 | 1111ms | `https://api.openalex.org/works?search=go&per_page=1` |
-| Cloudflare DoH | ✓ | 200 | 379ms | `https://cloudflare-dns.com/dns-query?name=example.com&type=A` |
-| Google DoH | ✓ | 200 | 463ms | `https://dns.google/resolve?name=example.com&type=A` |
-| crt.sh | ✗ | 502 | 1014ms | `https://crt.sh/?q=github.com&output=json` |
-| RDAP | ✓ | 200 | 1293ms | `https://rdap.org/domain/github.com` |
-| ip-api.com | ✓ | 200 | 300ms | `http://ip-api.com/json/8.8.8.8` |
-| OSM Nominatim | ✓ | 200 | 329ms | `https://nominatim.openstreetmap.org/search?q=Tokyo&format=json&limit=1` |
-| URLhaus | 🔑 | 401 | 817ms | `https://urlhaus-api.abuse.ch/v1/host/example.com` |
-| Ahmia | ✓ | 200 | 803ms | `https://ahmia.fi/search/?q=test` |
-| RIPE stat | ✓ | 200 | 867ms | `https://stat.ripe.net/data/whois/data.json?resource=8.8.8.8&type=inetnum` |
-| Wayback CDX | ✓ | 200 | 3568ms | `https://web.archive.org/cdx/search/cdx?url=example.com&output=json&limit=1` |
-| GDELT | ⏱ | 000 | 10084ms | `https://api.gdeltproject.org/api/v2/doc/doc?query=test&mode=ArtList&maxrecords=1&format=json` |
+| Backend | Status | HTTP | Endpoint | Note |
+|---------|:------:|:----:|----------|------|
+| DuckDuckGo | ✓ | 200 | `https://html.duckduckgo.com/html/?q=…` | scraping; rate-limits repeat queries |
+| SearXNG | ✗ | 200 | `https://searx.be/search?q=…&format=json` | public instances serve an anti-bot HTML wall; set `SEARXNG_INSTANCES` to a self-hosted instance |
+| Brave | 🔑 | — | `https://api.search.brave.com/res/v1/web/search` | needs `BRAVE_API_KEY` |
+| OpenAlex | ✓ | 200 | `https://api.openalex.org/works?search=…&per-page=20` | `search=`, not `q=` |
+| arXiv | ✓ | 200 | `http://export.arxiv.org/api/query?search_query=…` | `search_query=all:<terms>` |
+| Semantic Scholar | 🔑 | 200 | `https://api.semanticscholar.org/graph/v1/paper/search/bulk` | needs `S2_API_KEY` (header `x-api-key`) |
+| crates.io | ✓ | 200 | `https://crates.io/api/v1/crates?q=…` | |
+| npm | ✓ | 200 | `https://registry.npmjs.com/-/v1/search?text=…` | `text=`, not `q=` |
+| GitHub | 🔑 | 200 | `https://api.github.com/search/repositories?q=…` | needs `GITHUB_TOKEN` |
+| OSV.dev | ✓ | 200 | `https://api.osv.dev/v1/vulns/CVE-2024-3094` | |
+| NVD | ◷ | 200 | `https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=…` | 5 req / 30 s; times out under load |
+| RDAP | ✓ | 200 | `https://rdap.org/domain/github.com` | |
+| Cloudflare DoH | ✓ | 200 | `https://cloudflare-dns.com/dns-query?name=…&type=A` | needs `Accept: application/dns-json` |
+| Google DoH | ✓ | 200 | `https://dns.google/resolve?name=…&type=A` | |
+| crt.sh | ✓ | 200 | `https://crt.sh/?q=…&output=json` | frequent 502; retried with 3 s → 6 s → 12 s backoff |
+| ip-api.com | ✓ | 200 | `http://ip-api.com/json/8.8.8.8` | 45 req/min |
+| RIPE stat | ✓ | 200 | `https://stat.ripe.net/data/whois/data.json?resource=…` | |
+| URLhaus | 🔑 | 401 | `https://urlhaus-api.abuse.ch/v1/host/` | **POST** + `Auth-Key` header; needs `URLHAUS_AUTH_KEY` |
+| AlienVault OTX | 🔑 | 404 | `https://otx.alienvault.com/api/v1/indicators/{type}/{value}/general` | needs `OTX_API_KEY`; `/search/limited` is gone |
+| HIBP | 🔑 | — | `https://haveibeenpwned.com/api/v3/breachedaccount/…` | needs `HIBP_API_KEY` |
+| Ahmia | ✓ | 200 | `https://ahmia.fi/search/?q=…&<token>=<token>` | rolling token, scraped from the homepage form |
+| OSM Nominatim | ✓ | 200 | `https://nominatim.openstreetmap.org/search?q=…&format=json` | |
+| GDELT | ◷ | 429 | `https://api.gdeltproject.org/api/v2/doc/doc?query=…&format=json` | 1 req / 5 s; shared egress IPs get throttled |
+| Hacker News | ✓ | 200 | `https://hn.algolia.com/api/v1/search?query=…` | free, no auth; the news-intent fallback |
+| Wayback CDX | ✓ | 200 | `https://web.archive.org/cdx/search/cdx?url=…&output=json` | URL queries only |
 
-**Result**: 2 failing / 16 total.
+**Result**: 23 backends verified working / 25 probed (2 require operator setup:
+SearXNG needs a self-hosted instance, and the key-gated backends need their
+env var). NVD and GDELT are reachable but throttle aggressively.
 
-Legend: ✓ ok | ↪ redirect | 🔑 auth required (expected) | ⏱ timeout | ✗ HTTP error
+Legend: ✓ ok | 🔑 auth required | ◷ rate limited / flaky | ✗ upstream unavailable
 
-_Generated automatically; do not edit. 2 backend(s) need attention._
+_Regenerate with `./scripts/verify-live.go` (read-only) or
+`./scripts/osint-status.sh` (HTTP-level probe)._

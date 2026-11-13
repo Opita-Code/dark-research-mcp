@@ -30,6 +30,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -106,6 +107,11 @@ func FixturePathFor(req *http.Request, baseDir string) string {
 //
 // The host directory is namespaced so cross-host collisions cannot
 // happen even if a backend accidentally uses the same path.
+//
+// Volatile query parameters are normalized first (see
+// normalizeVolatileParams): Ahmia's rolling search token changes
+// every minute, so baking it into the fixture path would make every
+// recorded fixture unreachable on the next replay.
 func fixturePath(req *http.Request, baseDir string) string {
 	host := req.URL.Host
 	if host == "" {
@@ -132,11 +138,46 @@ func fixturePath(req *http.Request, baseDir string) string {
 	// Append a query-string file if the URL has one.
 	if req.URL.RawQuery != "" {
 		q := strings.ReplaceAll(req.URL.RawQuery, "?", "")
+		q = normalizeVolatileParams(q)
 		q = strings.ReplaceAll(q, "&", "_")
 		q = strings.ReplaceAll(q, "=", "-")
+		// Spaces are legal in a URL query but not in a filename on
+		// Windows, and the "+" vs "%20" encoding of a space must not
+		// produce two different fixture paths for the same request.
+		q = strings.ReplaceAll(q, " ", "+")
+		q = strings.ReplaceAll(q, "%20", "+")
+		// ":" is reserved on NTFS and truncates the filename when a
+		// fixture is written (e.g. arXiv's "search_query=all:foo").
+		q = strings.ReplaceAll(q, ":", "_")
 		name = name + "__" + q
 	}
 	return filepath.Join(baseDir, host, name+".http")
+}
+
+// volatileParamPattern matches a query parameter whose NAME and VALUE
+// are both 6 hex characters — the exact shape of Ahmia's rolling
+// token pair.
+//
+// The field name is hex, not decimal: ahmia derives it from
+// "sha1(SALT:minute)[6:12]", so it can contain letters (e.g.
+// "40d410"). Requiring the 6-hex VALUE as well keeps the pattern
+// narrow enough that ordinary query parameters are never rewritten.
+var volatileParamPattern = regexp.MustCompile(`(^|&)[0-9a-fA-F]{6}=[0-9a-fA-F]{6}(&|$)`)
+
+// normalizeVolatileParams rewrites volatile query parameters to
+// stable placeholders.
+//
+// Ahmia (ahmia.fi) protects its search endpoint with a rolling token:
+// the parameter NAME and the token VALUE both change every minute
+// (verified in ahmia-site's ahmia/views.py, 2026-11-13). A fixture
+// recorded with one token would never be found again after the minute
+// rolled over, so the pair is normalized to a fixed "TOKEN=TOKEN".
+//
+// The normalization is deliberately narrow: both the name and the
+// value must be exactly six hex characters, so ordinary query
+// parameters are never rewritten.
+func normalizeVolatileParams(rawQuery string) string {
+	return volatileParamPattern.ReplaceAllString(rawQuery, "${1}TOKEN=TOKEN")
 }
 
 func (t *RecordingTransport) replay(req *http.Request) (*http.Response, error) {

@@ -1,17 +1,22 @@
 HTTP/1.1 302 Found
-Expires: Sun, 12 Jul 2026 05:54:28 GMT
-Server-Timing: cfCacheStatus;desc="HIT"
-Server-Timing: cfEdge;dur=9,cfOrigin;dur=0
-Report-To: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=pZ9IoYCdi50Z%2FdXLnHKcskrbOBwDnB9aAMzscatLJICCDjUU3wRqp2vGrq%2BWxlqSsLB8kesiuMvN1K0ekYsgMyLHdw4yES25rr0H1hbZ5yMYoNC87mA5TFwxYw%3D%3D"}]}
-Nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
-Strict-Transport-Security: max-age=15552000; includeSubDomains; preload
-Content-Type: text/html
-Alt-Svc: h3=":443"; ma=86400
 Access-Control-Allow-Origin: *
-Cache-Control: public, max-age=300
+Expires: Sat, 14 Nov 2026 03:49:39 GMT
+Cache-Control: public, max-age=28800
 Referrer-Policy: origin
-Fly-Request-Id: 01KX7VVN2PSJVFR1PQZ74WM2Z6-iad
-X-Content-Type-Options: nosniff
+Via: 1.1 fly.io, 1.1 fly.io
+Cf-Cache-Status: HIT
+Strict-Transport-Security: max-age=15552000; includeSubDomains; preload
+Alt-Svc: h3=":443"; ma=86400
+Content-Type: text/html
+Server: cloudflare
+Age: 45440
 Location: https://rdap.verisign.com/com/v1/domain/github.com
+Server-Timing: cfCacheStatus;desc="HIT"
+Server-Timing: cfEdge;dur=6,cfOrigin;dur=0
+Cf-Ray: a59f242aff4ec873-MIA
+Nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+Fly-Request-Id: 01M79GCY5DWQQDFDZWJEB3V2FV-iad
+X-Content-Type-Options: nosniff
+Report-To: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=7jm3aDx7hZw%2B6mqdr2uR206TGtMo43hoKNRX%2BxJnPH%2BAc7jqJPQT5zqnwtXD7NOK2BQED2wTbEK%2F7uvRKOWtGgYo4F9uCbwkVK%2FiCT1wjpBU8wM8pkCEXDaicQ%3D%3D"}]}
 X-Fixture-Request-Host: rdap.org
 

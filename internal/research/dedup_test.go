@@ -106,20 +106,86 @@ func TestDedupItems_PreservesEmptyURLItems(t *testing.T) {
 	}
 }
 
-func TestDedupItems_SortedByConfidence(t *testing.T) {
+// TestDedupItems_SingleBucketKeepsBackendOrder documents that a
+// single bucket keeps the order the backend returned. The router
+// fills a bucket in backend order, and the confidence ranking is
+// already expressed by the backend's own ordering.
+//
+// (Before v0.9.1 this test asserted a confidence re-sort. The
+// re-sort was the bug: it starved every lower-confidence backend
+// once the merged list was truncated to MaxItems. See
+// TestDedupItems_InterleavesBackends.)
+func TestDedupItems_SingleBucketKeepsBackendOrder(t *testing.T) {
 	bucket := []Item{
 		{Title: "Low", URL: "https://a.com", Confidence: 0.5},
 		{Title: "High", URL: "https://b.com", Confidence: 0.95},
 		{Title: "Mid", URL: "https://c.com", Confidence: 0.7},
 	}
 	merged := DedupItems(bucket)
-	if merged[0].URL != "https://b.com" {
-		t.Errorf("expected highest confidence first, got %s", merged[0].URL)
+	if len(merged) != 3 {
+		t.Fatalf("want 3 items, got %d", len(merged))
 	}
-	if merged[1].URL != "https://c.com" {
-		t.Errorf("expected mid confidence second, got %s", merged[1].URL)
+	if merged[0].URL != "https://a.com" {
+		t.Errorf("expected first-seen order preserved, got %s", merged[0].URL)
 	}
-	if merged[2].URL != "https://a.com" {
-		t.Errorf("expected lowest confidence third, got %s", merged[2].URL)
+	if merged[2].URL != "https://c.com" {
+		t.Errorf("expected first-seen order preserved, got %s", merged[2].URL)
+	}
+}
+
+// TestDedupItems_InterleavesBackends is the regression guard for the
+// starvation bug: with two backends of different confidence, a
+// confidence sort followed by a MaxItems truncation filled every slot
+// from the highest-confidence backend and made the other backend's
+// successful results invisible. The merged list must interleave.
+func TestDedupItems_InterleavesBackends(t *testing.T) {
+	high := []Item{
+		{Title: "high-1", URL: "https://high1.com", Confidence: 0.95},
+		{Title: "high-2", URL: "https://high2.com", Confidence: 0.95},
+	}
+	low := []Item{
+		{Title: "low-1", URL: "https://low1.com", Confidence: 0.92},
+		{Title: "low-2", URL: "https://low2.com", Confidence: 0.92},
+	}
+	merged := DedupItems(high, low)
+	if len(merged) != 4 {
+		t.Fatalf("want 4 items, got %d", len(merged))
+	}
+	// Round-robin: one from each bucket in turn.
+	if merged[0].URL != "https://high1.com" {
+		t.Errorf("merged[0] = %s, want high1", merged[0].URL)
+	}
+	if merged[1].URL != "https://low1.com" {
+		t.Errorf("merged[1] = %s, want low1 (lower-confidence backend must not be starved)", merged[1].URL)
+	}
+	if merged[2].URL != "https://high2.com" {
+		t.Errorf("merged[2] = %s, want high2", merged[2].URL)
+	}
+	if merged[3].URL != "https://low2.com" {
+		t.Errorf("merged[3] = %s, want low2", merged[3].URL)
+	}
+}
+
+// TestDedupItems_InterleaveHandlesUnevenBuckets covers the case
+// where one backend returns fewer items than another.
+func TestDedupItems_InterleaveHandlesUnevenBuckets(t *testing.T) {
+	a := []Item{
+		{Title: "a1", URL: "https://a1.com", Confidence: 0.95},
+		{Title: "a2", URL: "https://a2.com", Confidence: 0.95},
+		{Title: "a3", URL: "https://a3.com", Confidence: 0.95},
+	}
+	b := []Item{
+		{Title: "b1", URL: "https://b1.com", Confidence: 0.9},
+	}
+	merged := DedupItems(a, b)
+	if len(merged) != 4 {
+		t.Fatalf("want 4 items, got %d", len(merged))
+	}
+	if merged[0].URL != "https://a1.com" || merged[1].URL != "https://b1.com" {
+		t.Errorf("expected interleaved start, got %s then %s", merged[0].URL, merged[1].URL)
+	}
+	// Once bucket b is exhausted the rest of bucket a follows.
+	if merged[2].URL != "https://a2.com" || merged[3].URL != "https://a3.com" {
+		t.Errorf("expected remaining items from bucket a, got %s then %s", merged[2].URL, merged[3].URL)
 	}
 }

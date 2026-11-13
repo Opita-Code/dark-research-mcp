@@ -6,6 +6,115 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — live-backend SOTA audit (2026-11-13)
+
+Every research backend was probed against its **live** upstream and the
+implementation was corrected where the shipped code no longer matched the
+upstream contract. The previous parser tests asserted payloads that no
+upstream actually returns (they were written from assumption, never
+recorded), which is how the drift went unnoticed.
+
+### Fixed — backends that never returned usable results
+
+- **OpenAlex** — sent `?q=`, but the API only accepts `search=` for
+  free-text work (`q` filters by id/doi). Every call returned HTTP 400.
+- **arXiv** — sent `?q=`; the API expects `search_query=all:<terms>`.
+  Every call returned HTTP 400 with an empty Atom feed.
+- **npm registry** — sent `?q=`; the search endpoint requires `text=`
+  and answered `{"code":"ERR_TEXT_MISSING"}`.
+- **RIPE stat** — `data.records` is an array of arrays of **objects**
+  (`{"key":...,"value":...}`), not arrays of strings. The parser always
+  failed with "cannot unmarshal object into .data.records.0.0".
+- **Wayback CDX** — `output=json` answers with a JSON **array whose first
+  row is a column header**, not JSON-lines. The line-based parser
+  extracted zero items from every real response. The bug was masked by a
+  fixture whose body was the empty array `[]`.
+- **GDELT DOC 2.0** — `format=json` answers with an **object**
+  (`{"articles":[...]}`), not a bare array. The parser always failed with
+  "cannot unmarshal array into Go value of type struct{...}". The
+  rate limit was also raised from 500 ms to 5.5 s to match the upstream's
+  documented "one request every 5 seconds" throttle.
+- **Ahmia** — the search endpoint is protected by a **rolling token**:
+  both the query-parameter name and the token value rotate every minute
+  (derived from a server-side salt, so they cannot be computed). A
+  request without a valid token is redirected to the homepage, which the
+  old parser read as "zero results". The backend now scrapes the token
+  from the homepage search form and issues the search with it, and the
+  parser unwraps the `onion-redirect` link to the real `.onion` URL.
+  The old regex also required the title anchor to be a direct child of
+  `<li>`; it is nested inside an `<h4>`.
+- **AlienVault OTX** — `/api/v1/search/limited` is no longer served
+  (HTTP 404). The backend now uses the supported
+  `/api/v1/indicators/{type}/{value}/general` endpoint and parses the
+  indicator record (reputation, validation, malware families).
+- **abuse.ch URLhaus** — the API now requires an **`Auth-Key` header**
+  and the host lookup is an **HTTP POST** with a form-encoded body
+  (`host=<value>`), not a GET with the host in the path. The field is
+  `date_added`, not `dateadded`.
+- **SearXNG** — the instance answers **HTML** unless `format=json` is
+  requested explicitly. Public instances are additionally behind
+  anti-bot walls that answer HTTP 200 with a challenge page; the parser
+  now reports that explicitly instead of a confusing JSON error, and
+  the instance is overridable via `SEARXNG_INSTANCES`.
+- **Cloudflare DoH** — requires `Accept: application/dns-json`; with the
+  router's generic Accept header the endpoint answered HTTP 400.
+- **Semantic Scholar** — authenticates with the **`x-api-key`** header,
+  not `Authorization: Bearer`. Switched to the bulk-search endpoint,
+  which also exposes `publicationDate`, `year` and `citationCount`.
+
+### Fixed — routing
+
+- **Multi-backend merge no longer starves lower-confidence backends.**
+  The merged list was sorted by confidence and then truncated to
+  `MaxItems`, so a higher-confidence backend (arXiv 0.95) filled every
+  slot and a lower-confidence one (OpenAlex 0.92) became invisible even
+  though its request succeeded. The merge now **interleaves** the
+  backends round-robin, so every contributing source is represented.
+- **POST support and per-backend headers.** `Backend` gained `Body`,
+  `Headers` and `AuthHeader`, and the router rebuilds the request per
+  retry attempt (a request body is consumed on send). The auth header
+  is now configurable per backend instead of hardcoding Bearer with a
+  Brave special case.
+- **Retry backoff is configurable.** New `Backend.RetryBackoffMs`
+  (default 1000 ms). crt.sh, which answers 502 frequently under load,
+  now backs off 3 s → 6 s → 12 s instead of 1 s → 2 s → 4 s.
+
+### Added
+
+- **New `news` backend: Hacker News (Algolia Search API).** Free, no
+  auth, and it gives the news intent a working source when GDELT
+  throttles. GDELT enforces ~1 request every 5 seconds and answers
+  HTTP 429 on shared egress IPs, which made the news intent
+  unusable on those networks; with the fallback, the intent still
+  returns results and the GDELT failure is reported transparently in
+  `errors`.
+- **Backends can opt out of queries they cannot serve.** New
+  `Backend.Skip` predicate, honoured by the router. The Wayback CDX
+  API archives *URLs*, not topics, so a topical keyword query used to
+  be padded with unrelated captures; the backend now only runs for
+  URL- or domain-shaped queries.
+- `scripts/record-fixtures.go` — refreshes the checked-in fixture
+  corpus from the live APIs using the same transport the tests replay.
+- `scripts/verify-live.go` — read-only health check: probes every
+  backend against its live upstream and reports items-per-backend.
+- `internal/research/router_contract_test.go` — asserts the URLhaus
+  POST + `Auth-Key` contract and the `Skip` behaviour against a
+  local httptest server.
+- `internal/research/testutil`: fixture paths now normalize Ahmia's
+  rotating token, encode spaces as `+` and strip `:`, which is
+  reserved on NTFS and previously truncated the arXiv fixture to 0 bytes.
+- `Router.AllowLoopback` — relaxes the SSRF guard for tests that
+  point a backend at an httptest server. Production wiring leaves it
+  false.
+
+### Changed
+
+- The parser tests now use payloads **recorded from the live APIs**
+  rather than hand-written approximations, and each carries a comment
+  pointing at the upstream contract it encodes.
+
+---
+
 ## [0.9.0] — 2026-08-08
 
 ### Release infrastructure (new — mirrors dark-memory-mcp pattern)

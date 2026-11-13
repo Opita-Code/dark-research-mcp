@@ -90,6 +90,12 @@ type Router struct {
 	// backend fan-out and populates Result.Summary. Failures degrade
 	// gracefully (Summary stays empty, no error propagated to caller).
 	EnableSynthesize bool
+
+	// AllowLoopback relaxes the SSRF guard so that loopback
+	// addresses (127.0.0.0/8, ::1) are accepted as backend targets.
+	// It exists for tests that point a backend at an httptest server;
+	// production wiring leaves it false.
+	AllowLoopback bool
 }
 
 // NewRouter builds a router with the given registry.
@@ -195,6 +201,10 @@ func (r *Router) Route(ctx context.Context, query string, intentHint Intent) (*R
 		}
 		if b.Auth != "" && Getenv(b.Auth) == "" {
 			res.Errors = append(res.Errors, BackendError{Backend: b.Name, Err: "missing auth env " + b.Auth})
+			continue
+		}
+		// A backend can opt out of queries it cannot serve.
+		if b.Skip != nil && b.Skip(query) {
 			continue
 		}
 		res.BackendsTried = append(res.BackendsTried, b.Name)
@@ -373,24 +383,47 @@ func (r *Router) call(ctx context.Context, b Backend, query string) ([]byte, err
 	// Safety: validate the resolved URL up-front. (Defensive — these are
 	// hard-coded so they should always pass, but a future code change
 	// shouldn't be able to SSRF via a backend URL.)
-	if _, err := safety.ValidateURL(fullURL, false); err != nil {
+	if _, err := safety.ValidateURL(fullURL, r.AllowLoopback); err != nil {
 		return nil, fmt.Errorf("backend url blocked by safety: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, fullURL, nil)
+	// Request body for POST backends. Built per-attempt because the
+	// reader is consumed on send.
+	newBody := func() io.Reader {
+		if b.Body == nil {
+			return nil
+		}
+		return b.Body(query)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, fullURL, newBody())
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "dark-research-mcp/"+Version()+" (+https://github.com/dark-agents/research-mcp)")
 	req.Header.Set("Accept", "application/json, text/html;q=0.9")
 
+	// Auth. The header name is configurable per backend: the default
+	// is "Authorization: Bearer <key>", but several providers use a
+	// custom scheme (Brave: X-Subscription-Token, URLhaus: Auth-Key,
+	// Semantic Scholar: x-api-key, GitHub: Bearer, OTX: X-OTX-API-KEY).
 	if b.Auth != "" {
-		req.Header.Set("Authorization", "Bearer "+Getenv(b.Auth))
-		// Brave wants X-Subscription-Token instead of Authorization.
-		if strings.EqualFold(b.Name, "brave") {
-			req.Header.Set("X-Subscription-Token", Getenv(b.Auth))
-			req.Header.Del("Authorization")
+		token := Getenv(b.Auth)
+		switch {
+		case b.AuthHeader != "":
+			req.Header.Set(b.AuthHeader, token)
+		case strings.EqualFold(b.Name, "brave"):
+			req.Header.Set("X-Subscription-Token", token)
+		default:
+			req.Header.Set("Authorization", "Bearer "+token)
 		}
+	}
+
+	// Extra per-backend headers. The {auth} placeholder expands to the
+	// resolved auth token so a backend can put its key in a custom
+	// header without hardcoding it.
+	for k, v := range b.Headers {
+		req.Header.Set(k, resolveAuthValue(v, Getenv(b.Auth)))
 	}
 
 	// Retry policy: backends with Retries>0 retry on 5xx / network
@@ -402,7 +435,16 @@ func (r *Router) call(ctx context.Context, b Backend, query string) ([]byte, err
 	}
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		body, status, err := r.callOnce(ctx, req)
+		// Rebuild the request per attempt. http.Request bodies are
+		// consumed on send, so a POST body must be re-created for
+		// every retry attempt.
+		attemptReq, err := http.NewRequestWithContext(ctx, method, fullURL, newBody())
+		if err != nil {
+			return nil, err
+		}
+		attemptReq.Header = req.Header.Clone()
+
+		body, status, err := r.callOnce(ctx, attemptReq)
 		if err == nil && status >= 200 && status < 300 {
 			return body, nil
 		}
@@ -420,8 +462,12 @@ func (r *Router) call(ctx context.Context, b Backend, query string) ([]byte, err
 		if attempt == maxAttempts {
 			break
 		}
-		// Exponential backoff: 1s, 2s, 4s, ...
-		backoff := time.Duration(1<<(attempt-1)) * time.Second
+		// Exponential backoff: base, 2*base, 4*base, ...
+		baseMs := b.RetryBackoffMs
+		if baseMs <= 0 {
+			baseMs = 1000
+		}
+		backoff := time.Duration(baseMs*(1<<(attempt-1))) * time.Millisecond
 		select {
 		case <-time.After(backoff):
 		case <-ctx.Done():
@@ -433,10 +479,7 @@ func (r *Router) call(ctx context.Context, b Backend, query string) ([]byte, err
 
 // callOnce performs a single HTTP request and returns (body, status, err).
 func (r *Router) callOnce(ctx context.Context, req *http.Request) ([]byte, int, error) {
-	// Each attempt needs its own Request because http.Request bodies are consumed.
-	attemptReq := req.Clone(ctx)
-	attemptReq.Header = req.Header.Clone()
-	resp, err := r.http.Do(attemptReq)
+	resp, err := r.http.Do(req)
 	if err != nil {
 		return nil, 0, err
 	}

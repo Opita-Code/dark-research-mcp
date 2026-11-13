@@ -1,5 +1,11 @@
-HTTP/1.1 400 Bad Request
+HTTP/1.1 200 OK
+Server: cloudflare
+Content-Type: application/dns-json
 Access-Control-Allow-Origin: *
 X-Content-Type-Options: nosniff
+Content-Length: 251
+Cf-Ray: a59f242ecc94b226-BOG
+Alt-Svc: h3=":443"; ma=86400
 X-Fixture-Request-Host: cloudflare-dns.com
 
+{"Status":0,"TC":false,"RD":true,"RA":true,"AD":true,"CD":false,"Question":[{"name":"example.com","type":1}],"Answer":[{"name":"example.com","type":1,"TTL":185,"data":"172.66.147.243"},{"name":"example.com","type":1,"TTL":185,"data":"104.20.23.154"}]}

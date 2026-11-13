@@ -31,23 +31,30 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Each line: "name|url"
+#
+# The URLs MUST mirror the ones the Go backends actually build
+# (internal/research/backends_defs.go), otherwise the probe reports a
+# backend as healthy while the client is broken (or vice versa).
 CHECKS=(
   "OSV (CVE)|https://api.osv.dev/v1/vulns/CVE-2024-3094"
-  "OpenAlex|https://api.openalex.org/works?search=go&per_page=1"
+  "OpenAlex|https://api.openalex.org/works?search=go&per-page=1"
   "arXiv|http://export.arxiv.org/api/query?search_query=all:test&max_results=1"
-  "crates.io|https://crates.io/api/v1/crates/tokio"
+  "crates.io|https://crates.io/api/v1/crates?q=tokio&per_page=1"
   "npm|https://registry.npmjs.com/-/v1/search?text=react&size=1"
+  "GitHub|https://api.github.com/search/repositories?q=react&per_page=1"
   "RDAP|https://rdap.org/domain/github.com"
   "Cloudflare DoH|https://cloudflare-dns.com/dns-query?name=example.com&type=A"
   "Google DoH|https://dns.google/resolve?name=example.com&type=A"
   "crt.sh|https://crt.sh/?q=github.com&output=json"
   "ip-api.com|http://ip-api.com/json/8.8.8.8"
   "RIPE stat|https://stat.ripe.net/data/whois/data.json?resource=8.8.8.8&type=inetnum"
+  "NVD|https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=CVE-2024-3094"
   "URLhaus|https://urlhaus-api.abuse.ch/v1/host/example.com"
   "Ahmia|https://ahmia.fi/search/?q=test"
   "OSM Nominatim|https://nominatim.openstreetmap.org/search?q=Tokyo&format=json&limit=1"
   "GDELT|https://api.gdeltproject.org/api/v2/doc/doc?query=test&mode=ArtList&maxrecords=1&format=json"
   "Wayback CDX|https://web.archive.org/cdx/search/cdx?url=example.com&output=json&limit=1"
+  "DuckDuckGo|https://html.duckduckgo.com/html/?q=test"
 )
 
 UA="dark-research-mcp-status/1.0 (+https://github.com/Opita-Code/dark-research-mcp)"
@@ -62,10 +69,35 @@ probe() {
   local name="$1" url="$2"
   local code latency start end
   local -a extra_headers=(-H "Accept: application/json, text/html;q=0.9")
+  local -a extra_args=()
 
   # Cloudflare DoH requires the JSON content-type specifically.
   if [[ "$url" == *"cloudflare-dns.com"* ]]; then
     extra_headers=(-H "Accept: application/dns-json")
+  fi
+
+  # Ahmia's search endpoint needs a rolling token (both the parameter
+  # name and the value rotate every minute and are derived from a
+  # server-side salt). Fetch the homepage, scrape the hidden input and
+  # append it, otherwise the request is redirected to the homepage.
+  if [[ "$url" == *"ahmia.fi/search"* ]]; then
+    local token_line
+    token_line=$(curl -s --max-time "$TIMEOUT" -A "$UA" "https://ahmia.fi/" 2>/dev/null \
+      | grep -oE '<input type="hidden" name="[0-9a-fA-F]{6}" value="[0-9a-fA-F]{6}"' \
+      | head -n1)
+    if [[ -n "$token_line" ]]; then
+      local field value
+      field=$(printf '%s' "$token_line" | sed -E 's/.*name="([0-9a-fA-F]{6})".*/\1/')
+      value=$(printf '%s' "$token_line" | sed -E 's/.*value="([0-9a-fA-F]{6})".*/\1/')
+      url="${url}&${field}=${value}"
+    fi
+  fi
+
+  # abuse.ch URLhaus requires an Auth-Key header and answers 401
+  # without one. The key is optional for the probe: a 401 is reported
+  # as "auth_required", which the classifier treats as a non-failure.
+  if [[ "$url" == *"urlhaus-api.abuse.ch"* && -n "${URLHAUS_AUTH_KEY:-}" ]]; then
+    extra_headers+=(-H "Auth-Key: ${URLHAUS_AUTH_KEY}")
   fi
 
   start=$(date +%s%3N 2>/dev/null || date +%s)
@@ -77,6 +109,7 @@ probe() {
     --max-time "$TIMEOUT" \
     -A "$UA" \
     "${extra_headers[@]}" \
+    "${extra_args[@]}" \
     "$url" 2>/dev/null) || code="000"
   end=$(date +%s%3N 2>/dev/null || date +%s)
   latency=$((end - start))

@@ -105,6 +105,19 @@ func DedupKey(rawURL string) string {
 //
 // Order: stable across calls (sorted by descending confidence, then
 // by first-seen index for ties). This makes test assertions reliable.
+//
+// Interleaving (v0.9.1): the merged list is NOT a plain confidence
+// sort. A plain sort followed by a MaxItems truncation starves every
+// backend whose confidence is below the top backend's — e.g. with
+// arXiv (0.95) and OpenAlex (0.92) and MaxItems=20, a confidence
+// sort fills all 20 slots from arXiv and the OpenAlex results are
+// invisible even though the OpenAlex request succeeded. Since the
+// whole point of the multi-backend merge is to combine sources, the
+// merged list interleaves the backends: one item from each bucket in
+// turn (round-robin), and only when a bucket runs dry do the
+// remaining buckets contribute more.
+//
+// Within a bucket the original confidence order is preserved.
 func DedupItems(buckets ...[]Item) []Item {
 	type seen struct {
 		merged Item
@@ -113,7 +126,11 @@ func DedupItems(buckets ...[]Item) []Item {
 	index := map[string]*seen{}
 	order := []string{} // tracks insertion order
 
+	// Track, per bucket, the items that survived dedup, so the
+	// interleaving can walk them in order.
+	perBucket := make([][]string, 0, len(buckets))
 	for _, bucket := range buckets {
+		keys := make([]string, 0, len(bucket))
 		for _, it := range bucket {
 			key := it.DedupKey
 			if key == "" {
@@ -135,23 +152,36 @@ func DedupItems(buckets ...[]Item) []Item {
 			}
 			index[key] = &seen{merged: it, idx: len(order)}
 			order = append(order, key)
+			keys = append(keys, key)
 		}
+		perBucket = append(perBucket, keys)
 	}
 
-	// Materialize + sort by confidence desc, then first-seen index asc.
+	// Materialize in interleaved order: round-robin across buckets.
+	//
+	// The round-robin walk already yields, for each bucket, that
+	// bucket's items in their original order — and each bucket's
+	// original order is the order the backend returned, which the
+	// router filled in weight order. No further sorting is applied:
+	// sorting by confidence here would undo the interleaving (the
+	// whole point of the change).
 	out := make([]Item, 0, len(order))
-	for _, k := range order {
-		out = append(out, index[k].merged)
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Confidence != out[j].Confidence {
-			return out[i].Confidence > out[j].Confidence
+	cursor := make([]int, len(perBucket))
+	for len(out) < len(order) {
+		progressed := false
+		for bi := range perBucket {
+			if cursor[bi] >= len(perBucket[bi]) {
+				continue
+			}
+			key := perBucket[bi][cursor[bi]]
+			cursor[bi]++
+			out = append(out, index[key].merged)
+			progressed = true
 		}
-		// Tie-break by first-seen — preserve order from index map.
-		ki := index[dedupKeyOf(out[i])].idx
-		kj := index[dedupKeyOf(out[j])].idx
-		return ki < kj
-	})
+		if !progressed {
+			break
+		}
+	}
 	return out
 }
 
