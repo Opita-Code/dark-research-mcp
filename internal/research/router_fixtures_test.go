@@ -249,11 +249,15 @@ func TestRouter_nominatim(t *testing.T) {
 }
 
 func TestRouter_gdelt(t *testing.T) {
+	// The news intent has two live backends: GDELT's global news
+	// graph and the Hacker News Algolia API. GDELT enforces "one
+	// request every 5 seconds" and answers HTTP 429 when the limit is
+	// hit, and it throttles shared/cloud egress IPs hard enough that
+	// a recorded fixture may not be obtainable from every network.
+	// Either backend may therefore be the one that succeeds.
 	res := runRoute(t, "climate change", research.IntentNews)
-	// GDELT is sometimes unreachable (TLS handshake timeout).
-	// Accept either gdelt (primary) or wayback (fallback).
-	if res.BackendUsed != "gdelt" && res.BackendUsed != "wayback" {
-		t.Errorf("expected gdelt or wayback, got %q (errors=%+v)",
+	if res.BackendUsed != "gdelt" && res.BackendUsed != "hackernews" {
+		t.Errorf("expected gdelt or hackernews, got %q (errors=%+v)",
 			res.BackendUsed, resErrors(res))
 	}
 }

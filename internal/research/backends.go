@@ -1,8 +1,26 @@
 package research
 
 import (
+	"io"
+	"strings"
 	"time"
 )
+
+// authTokenPlaceholder is replaced in a Backend.Headers value with the
+// resolved auth env var value at request time. It lets a backend
+// declare a custom auth header without the secret ever appearing in
+// source.
+const authTokenPlaceholder = "{auth}"
+
+// resolveAuthValue expands the {auth} placeholder in a header value
+// with the backend's auth token. If the backend has no auth env var,
+// the placeholder is stripped so no literal "{auth}" leaks to the wire.
+func resolveAuthValue(v string, token string) string {
+	if !strings.Contains(v, authTokenPlaceholder) {
+		return v
+	}
+	return strings.ReplaceAll(v, authTokenPlaceholder, token)
+}
 
 // Backend describes one OSINT data source. Backends are tried in
 // Weight order; missing Auth env var skips the backend; HTTP errors
@@ -20,6 +38,29 @@ type Backend struct {
 
 	// Method is "GET" or "POST".
 	Method string
+
+	// Body builds the request body for POST requests. The query is
+	// passed in so backends can serialize it into a form body (the
+	// URLhaus host endpoint takes `host=<value>` as form-encoded
+	// POST data, not as a path segment). Nil means no body.
+	Body func(query string) io.Reader
+
+	// Headers are extra request headers, keyed by header name. These
+	// are set verbatim on every request to this backend and are used
+	// for providers whose auth scheme is a custom header rather than
+	// the "Authorization: Bearer" default (e.g. URLhaus uses
+	// `Auth-Key`, Cloudflare DoH needs `Accept: application/dns-json`).
+	//
+	// Values may reference the auth env var via AuthHeader: the
+	// literal token "{auth}" is replaced with the value of the Auth
+	// env var at request time, so the key never has to be hardcoded.
+	Headers map[string]string
+
+	// AuthHeader names the header that carries the auth env var's
+	// value. Empty means "Authorization: Bearer <key>" (the default).
+	// Set to e.g. "Auth-Key" for URLhaus, or "X-Subscription-Token"
+	// for Brave.
+	AuthHeader string
 
 	// Auth is the env var name that holds the API key. Empty means no auth.
 	Auth string
@@ -55,6 +96,20 @@ type Backend struct {
 	// retried (client error, won't change on retry).
 	Retries int
 
+	// RetryBackoffMs overrides the base delay of the exponential
+	// backoff between retries. 0 (default) = 1000ms (1s, 2s, 4s...).
+	// Backends whose upstream is known to flap under load (crt.sh
+	// returns 502 frequently) need a longer base delay.
+	RetryBackoffMs int
+
+	// Skip reports whether this backend should be skipped for a given
+	// query. It lets a backend opt out of queries it cannot serve
+	// meaningfully — e.g. the Wayback CDX API archives URLs, so a
+	// topical keyword query is not something it can answer, and
+	// attempting it would pad the result with unrelated captures.
+	// A nil Skip means "always attempt".
+	Skip func(query string) bool
+
 	// Parse converts a backend-specific response body into normalized
 	// Result items. The router calls this after each successful fetch.
 	Parse func(body []byte) ([]Item, error)
@@ -83,13 +138,23 @@ type Item struct {
 
 // Result is what the router returns to the caller.
 type Result struct {
-	Intent        Intent         `json:"intent"`
-	Query         string         `json:"query"`
-	BackendUsed   string         `json:"backend_used"`
-	BackendsTried []string       `json:"backends_tried"`
-	Took          time.Duration  `json:"took_ms"`
-	Errors        []BackendError `json:"errors,omitempty"`
-	Items         []Item         `json:"results"`
+	Intent        Intent   `json:"intent"`
+	Query         string   `json:"query"`
+	BackendUsed   string   `json:"backend_used"`
+	BackendsTried []string `json:"backends_tried"`
+	// TookMs is the wall-clock duration of the route, in MILLISECONDS.
+	//
+	// It used to be a `time.Duration` tagged `took_ms`, but
+	// encoding/json marshals a time.Duration as an integer count of
+	// NANOSECONDS — so a 350 ms call was published as 3473368300.
+	// The wire contract promises milliseconds and the research_runs
+	// .took_ms column stores milliseconds, so both sides must agree.
+	TookMs int64 `json:"took_ms"`
+	// Took is the same duration as a time.Duration, for in-process
+	// callers. Not serialised: "took_ms" is the wire key.
+	Took   time.Duration  `json:"-"`
+	Errors []BackendError `json:"errors,omitempty"`
+	Items  []Item         `json:"results"`
 
 	// Summary (v0.8.1+) is an optional one-paragraph analyst summary
 	// produced by the LLM when EnableSynthesize is true AND the

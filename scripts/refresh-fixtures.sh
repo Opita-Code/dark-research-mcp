@@ -46,7 +46,10 @@ declare -A ALIAS=(
   [nominatim]="TestRouter_nominatim"
   [osm-nominatim]="TestRouter_nominatim"
   [gdelt]="TestRouter_gdelt"
-  [wayback]="TestRouter_ripe"  # wayback has no dedicated router test; rip
+  [hackernews]="TestRouter_gdelt"
+  [hn]="TestRouter_gdelt"
+  [wayback]="TestRouter_gdelt"
+  [web]="TestRouter_gdelt"
 )
 
 DRY_RUN=0

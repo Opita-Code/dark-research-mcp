@@ -1,0 +1,41 @@
+HTTP/1.1 200 OK
+X-Ts: 200
+X-App-Server: wwwb-app240-dc6
+X-Rl: 0
+Permissions-Policy: interest-cohort=()
+X-Sd: 0
+X-Page-Cache: BYPASS
+X-Nid: COLOMBIA TELECOMUNICACIONES S.A. ESP BIC
+X-Be: wb_cdx_pygwb_nomatch
+Content-Type: application/json
+Server-Timing: exclusion.robots;dur=0.089371, exclusion.robots.policy;dur=0.075452, esindex;dur=0.009395
+Server-Timing: TR;dur=0,Tw;dur=0,Tc;dur=0
+Server-Timing: BYPASS
+X-Tr: 279
+X-Location: cdx
+X-Na: 0
+Referrer-Policy: no-referrer-when-downgrade
+Server: nginx
+X-Fixture-Request-Host: web.archive.org
+
+[["urlkey","timestamp","original","mimetype","statuscode","digest","length"],
+["com,example)/","20020120142510","http://example.com:80/","text/html","200","HT2DYGA5UKZCPBSFVCV3JOBXGW2G5UUA","1792"],
+["com,example)/","20020328012821","http://www.example.com:80/","text/html","200","UY3I2DT2AMWAY6DECFCFYMT5ZOTFHUCH","481"],
+["com,example)/","20020524041628","http://www.example.com:80/","text/html","200","UY3I2DT2AMWAY6DECFCFYMT5ZOTFHUCH","481"],
+["com,example)/","20020528114741","http://www.example.com:80/","text/html","200","UY3I2DT2AMWAY6DECFCFYMT5ZOTFHUCH","481"],
+["com,example)/","20020529173502","http://www.example.com:80/","text/html","200","UY3I2DT2AMWAY6DECFCFYMT5ZOTFHUCH","482"],
+["com,example)/","20020604040806","http://example.com:80/","text/html","200","UY3I2DT2AMWAY6DECFCFYMT5ZOTFHUCH","477"],
+["com,example)/","20020604050644","http://example.com:80/","text/html","200","UY3I2DT2AMWAY6DECFCFYMT5ZOTFHUCH","476"],
+["com,example)/","20020722232628","http://example.com:80/","text/html","200","UY3I2DT2AMWAY6DECFCFYMT5ZOTFHUCH","451"],
+["com,example)/","20020801235910","http://www.example.com:80/","text/html","200","UY3I2DT2AMWAY6DECFCFYMT5ZOTFHUCH","459"],
+["com,example)/","20020803080544","http://www.example.com:80/","text/html","200","UY3I2DT2AMWAY6DECFCFYMT5ZOTFHUCH","458"],
+["com,example)/","20020804094019","http://www.example.com:80/","text/html","200","UY3I2DT2AMWAY6DECFCFYMT5ZOTFHUCH","457"],
+["com,example)/","20020805082359","http://www.example.com:80/","text/html","200","UY3I2DT2AMWAY6DECFCFYMT5ZOTFHUCH","456"],
+["com,example)/","20020807090825","http://www.example.com:80/","text/html","200","UY3I2DT2AMWAY6DECFCFYMT5ZOTFHUCH","457"],
+["com,example)/","20020808094211","http://www.example.com:80/","text/html","200","UY3I2DT2AMWAY6DECFCFYMT5ZOTFHUCH","459"],
+["com,example)/","20020809103151","http://www.example.com:80/","text/html","200","UY3I2DT2AMWAY6DECFCFYMT5ZOTFHUCH","459"],
+["com,example)/","20020810100026","http://www.example.com:80/","text/html","200","UY3I2DT2AMWAY6DECFCFYMT5ZOTFHUCH","457"],
+["com,example)/","20020811101503","http://www.example.com:80/","text/html","200","UY3I2DT2AMWAY6DECFCFYMT5ZOTFHUCH","458"],
+["com,example)/","20020814102302","http://www.example.com:80/","text/html","200","UY3I2DT2AMWAY6DECFCFYMT5ZOTFHUCH","457"],
+["com,example)/","20020815101702","http://www.example.com:80/","text/html","200","UY3I2DT2AMWAY6DECFCFYMT5ZOTFHUCH","457"],
+["com,example)/","20020816105513","http://www.example.com:80/","text/html","200","UY3I2DT2AMWAY6DECFCFYMT5ZOTFHUCH","458"]]

@@ -62,6 +62,21 @@ que en v0.7.x.
 Plus `dark_research_multi` (parallel fanout across intents), `web_search`,
 `web_fetch`, `url_extract_components`, `text_anonymize`.
 
+### Credenciales por backend
+
+Los backends que requieren clave se omiten silenciosamente si la variable de
+entorno no está definida; el resto sigue funcionando.
+
+| Variable de entorno | Backend | Nota |
+|---|---|---|
+| `BRAVE_API_KEY` | Brave | header `X-Subscription-Token` |
+| `S2_API_KEY` | Semantic Scholar | header `x-api-key` |
+| `GITHUB_TOKEN` | GitHub | `Authorization: Bearer` |
+| `URLHAUS_AUTH_KEY` | abuse.ch URLhaus | header `Auth-Key`; **obligatoria**, la API rechaza peticiones anónimas con 401 |
+| `OTX_API_KEY` | AlienVault OTX | header `X-OTX-API-KEY` |
+| `HIBP_API_KEY` | haveibeenpwned.com | `hibp-api-key` |
+| `SEARXNG_INSTANCES` | SearXNG | URL de una instancia propia (comma-separated). Las instancias públicas suelen estar detrás de un muro anti-bot y devuelven HTML en vez de JSON. |
+
 ---
 
 ## Arquitectura cx.v3

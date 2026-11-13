@@ -235,3 +235,77 @@ func isNetworkError(err error) bool {
 // Compile-time check that http.Request construction works under
 // url.Parse (catches accidental import drift).
 var _ = url.Parse
+
+// TestFixturePath_NormalizesVolatileToken covers the Ahmia rolling
+// token: the parameter name AND value are 6 hex characters and both
+// rotate every minute, so they must not end up in the fixture path —
+// otherwise a recorded fixture is unreachable on the next replay.
+func TestFixturePath_NormalizesVolatileToken(t *testing.T) {
+	req, err := http.NewRequest("GET", "https://ahmia.fi/search/?q=bitcoin&40d410=deae1f", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := FixturePathFor(req, "fixtures")
+	if !strings.Contains(p, "TOKEN-TOKEN") {
+		t.Errorf("expected the rolling token to be normalized, got %q", p)
+	}
+	if strings.Contains(p, "deae1f") || strings.Contains(p, "40d410") {
+		t.Errorf("rolling token leaked into the fixture path: %q", p)
+	}
+}
+
+// TestFixturePath_TokenNormalizationIsStable checks that two
+// different tokens map to the SAME fixture path.
+func TestFixturePath_TokenNormalizationIsStable(t *testing.T) {
+	a, _ := http.NewRequest("GET", "https://ahmia.fi/search/?q=bitcoin&40d410=deae1f", nil)
+	b, _ := http.NewRequest("GET", "https://ahmia.fi/search/?q=bitcoin&ab12cd=987654", nil)
+	pa := FixturePathFor(a, "fixtures")
+	pb := FixturePathFor(b, "fixtures")
+	if pa != pb {
+		t.Errorf("different tokens produced different fixture paths:\n  %q\n  %q", pa, pb)
+	}
+}
+
+// TestFixturePath_LeavesOrdinaryParamsAlone makes sure the
+// normalization is narrow: a normal query parameter must survive
+// untouched.
+func TestFixturePath_LeavesOrdinaryParamsAlone(t *testing.T) {
+	req, err := http.NewRequest("GET", "https://api.openalex.org/works?search=go&per-page=20", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := FixturePathFor(req, "fixtures")
+	if strings.Contains(p, "TOKEN") {
+		t.Errorf("ordinary params were rewritten: %q", p)
+	}
+	if !strings.Contains(p, "search-go") {
+		t.Errorf("expected the search param to survive, got %q", p)
+	}
+}
+
+// TestFixturePath_SanitizesReservedCharacters covers the Windows
+// filename constraints: ":" is reserved on NTFS and truncates the
+// written file (arXiv's "search_query=all:foo").
+func TestFixturePath_SanitizesReservedCharacters(t *testing.T) {
+	req, err := http.NewRequest("GET", "http://export.arxiv.org/api/query?search_query=all:electron&max_results=20", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := FixturePathFor(req, "fixtures")
+	if strings.Contains(p, ":") {
+		t.Errorf("reserved ':' left in the fixture path: %q", p)
+	}
+}
+
+// TestFixturePath_NoSpacesInName covers spaces in the query string:
+// they are legal in a URL but not in a filename.
+func TestFixturePath_NoSpacesInName(t *testing.T) {
+	req, err := http.NewRequest("GET", "https://example.com/x?q=climate change", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := FixturePathFor(req, "fixtures")
+	if strings.Contains(p, " ") {
+		t.Errorf("space left in the fixture path: %q", p)
+	}
+}
